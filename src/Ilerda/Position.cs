@@ -28,13 +28,55 @@ public sealed class Position
 
     public ulong Occ => ByColor[0] | ByColor[1];
 
+    /// <summary>Clau Zobrist de la posició, mantinguda de forma incremental.</summary>
+    public ulong Key;
+
+    static readonly ulong[,] ZPiece = new ulong[12, 64];
+    static readonly ulong[] ZCastle = new ulong[16];
+    static readonly ulong[] ZEp = new ulong[8];
+    static readonly ulong ZSide;
+
+    static Position()
+    {
+        // xorshift64* amb llavor fixa: les claus són reproduïbles entre execucions.
+        ulong s = 0x9E3779B97F4A7C15UL;
+        ulong Next()
+        {
+            s ^= s >> 12; s ^= s << 25; s ^= s >> 27;
+            return s * 0x2545F4914F6CDD1DUL;
+        }
+        for (int p = 0; p < 12; p++)
+            for (int sq = 0; sq < 64; sq++) ZPiece[p, sq] = Next();
+        for (int i = 0; i < 16; i++) ZCastle[i] = Next();
+        for (int i = 0; i < 8; i++) ZEp[i] = Next();
+        ZSide = Next();
+    }
+
+    /// <summary>Recalcula la clau des de zero (per validar la incremental).</summary>
+    public ulong ComputeKey()
+    {
+        ulong k = 0;
+        for (int sq = 0; sq < 64; sq++)
+            if (Board[sq] != -1) k ^= ZPiece[Board[sq], sq];
+        if (Side == 1) k ^= ZSide;
+        k ^= ZCastle[Castling];
+        if (Ep != -1) k ^= ZEp[Ep & 7];
+        return k;
+    }
+
     struct Undo
     {
         public int Move, Captured, Castling, Ep, Halfmove;
+        public ulong Key;
     }
 
     readonly Undo[] _stack = new Undo[2048];
     int _ply;
+
+    // Claus de les posicions anteriors (abans de cada moviment), incloent la partida
+    // sencera: ClearHistory no les esborra perquè la cerca detecti repeticions prèvies.
+    ulong[] _keyHist = new ulong[4096];
+    int _histCount;
 
     static readonly int[] CastleMask = BuildCastleMask();
 
@@ -67,14 +109,28 @@ public sealed class Position
         c.Ep = Ep;
         c.Halfmove = Halfmove;
         c.Fullmove = Fullmove;
+        c.Key = Key;
+        Array.Copy(_keyHist, c._keyHist, _histCount);
+        c._histCount = _histCount;
         return c;
     }
 
-    /// <summary>Descarta l'historial d'undo (després d'aplicar els moviments d'un "position").</summary>
+    /// <summary>Descarta l'historial d'undo (després d'aplicar els moviments d'un "position").
+    /// L'historial de claus es conserva per a la detecció de repeticions.</summary>
     public void ClearHistory() => _ply = 0;
+
+    /// <summary>True si la posició actual ja s'ha vist dins del tram reversible (des de l'últim peó/captura).</summary>
+    public bool IsRepetition()
+    {
+        int lowest = Math.Max(0, _histCount - Halfmove);
+        for (int i = _histCount - 2; i >= lowest; i -= 2)
+            if (_keyHist[i] == Key) return true;
+        return false;
+    }
 
     void AddPiece(int sq, int piece)
     {
+        Key ^= ZPiece[piece, sq];
         ulong b = 1UL << sq;
         Bb[piece] |= b;
         ByColor[piece / 6] |= b;
@@ -84,6 +140,7 @@ public sealed class Position
     void RemovePiece(int sq)
     {
         int piece = Board[sq];
+        Key ^= ZPiece[piece, sq];
         ulong b = ~(1UL << sq);
         Bb[piece] &= b;
         ByColor[piece / 6] &= b;
@@ -103,6 +160,8 @@ public sealed class Position
         Array.Clear(ByColor);
         Array.Fill(Board, -1);
         _ply = 0;
+        _histCount = 0;
+        Key = 0;
 
         var parts = fen.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         int rank = 7, file = 0;
@@ -136,6 +195,8 @@ public sealed class Position
 
         Halfmove = parts.Length > 4 ? int.Parse(parts[4]) : 0;
         Fullmove = parts.Length > 5 ? int.Parse(parts[5]) : 1;
+
+        Key = ComputeKey();
     }
 
     public bool IsAttacked(int sq, int by)
@@ -162,7 +223,11 @@ public sealed class Position
         int epCapSq = to + (us == 0 ? -8 : 8);
         int captured = flag == MoveGen.FlagEp ? Board[epCapSq] : Board[to];
 
-        _stack[_ply++] = new Undo { Move = m, Captured = captured, Castling = Castling, Ep = Ep, Halfmove = Halfmove };
+        _stack[_ply++] = new Undo { Move = m, Captured = captured, Castling = Castling, Ep = Ep, Halfmove = Halfmove, Key = Key };
+        _keyHist[_histCount++] = Key;
+
+        Key ^= ZCastle[Castling];
+        if (Ep != -1) Key ^= ZEp[Ep & 7];
 
         Halfmove++;
         if (piece % 6 == Pc.Pawn || captured != -1) Halfmove = 0;
@@ -186,6 +251,8 @@ public sealed class Position
 
         Ep = flag == MoveGen.FlagDouble ? (from + to) / 2 : -1;
         Castling &= CastleMask[from] & CastleMask[to];
+        Key ^= ZCastle[Castling] ^ ZSide;
+        if (Ep != -1) Key ^= ZEp[Ep & 7];
         Side = them;
         if (us == 1) Fullmove++;
 
@@ -200,6 +267,7 @@ public sealed class Position
     public void UnmakeMove()
     {
         var u = _stack[--_ply];
+        _histCount--;
         int m = u.Move;
         int from = MoveGen.From(m), to = MoveGen.To(m), promo = MoveGen.Promo(m), flag = MoveGen.Flag(m);
         Side ^= 1;
@@ -224,6 +292,7 @@ public sealed class Position
         Castling = u.Castling;
         Ep = u.Ep;
         Halfmove = u.Halfmove;
+        Key = u.Key;
         if (us == 1) Fullmove--;
     }
 

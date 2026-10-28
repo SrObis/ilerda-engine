@@ -4,7 +4,7 @@ namespace Ilerda;
 
 /// <summary>
 /// Cerca negamax alfa-beta amb aprofundiment iteratiu, cerca de quiescència,
-/// ordenació MVV-LVA i control de temps. Encara sense taula de transposició ni repetició.
+/// taula de transposició (Zobrist), detecció de repeticions, ordenació MVV-LVA i control de temps.
 /// </summary>
 public sealed class Searcher
 {
@@ -18,8 +18,13 @@ public sealed class Searcher
     bool _stopped;
     int _rootBest;
 
+    readonly TranspositionTable _tt = new(64);
+
     public volatile bool Stop;
     public int BestMove { get; private set; }
+
+    public void SetHash(int megabytes) => _tt.Resize(megabytes);
+    public void NewGame() => _tt.Clear();
 
     public int Think(Position pos, int maxDepth, long timeMs, Action<string>? info)
     {
@@ -80,18 +85,36 @@ public sealed class Searcher
         if (CheckStop()) return 0;
         _nodes++;
 
-        if (ply > 0 && _pos.Halfmove >= 100) return 0;
+        if (ply > 0 && (_pos.Halfmove >= 100 || _pos.IsRepetition())) return 0;
 
         bool inCheck = _pos.InCheck();
         if (inCheck && ply < 60) depth++;
         if (depth <= 0) return Quiesce(alpha, beta, ply);
 
+        ulong key = _pos.Key;
+        int alpha0 = alpha;
+        int ttMove = 0;
+        if (_tt.Probe(key, out int tm, out int ts, out int td, out Bound tb))
+        {
+            ttMove = tm;
+            if (ply > 0 && td >= depth)
+            {
+                // Les puntuacions de mat es guarden relatives a la posició, no a l'arrel.
+                if (ts > Mate - 100) ts -= ply;
+                else if (ts < -Mate + 100) ts += ply;
+
+                if (tb == Bound.Exact) return ts;
+                if (tb == Bound.Lower && ts >= beta) return ts;
+                if (tb == Bound.Upper && ts <= alpha) return ts;
+            }
+        }
+
         Span<int> moves = stackalloc int[320];
         Span<int> scores = stackalloc int[320];
         int n = MoveGen.Generate(_pos, moves);
-        ScoreMoves(moves, scores, n);
+        ScoreMoves(moves, scores, n, ttMove);
 
-        int legal = 0, best = -Inf;
+        int legal = 0, best = -Inf, bestMove = 0;
         for (int i = 0; i < n; i++)
         {
             PickBest(moves, scores, i, n);
@@ -105,6 +128,7 @@ public sealed class Searcher
             if (score > best)
             {
                 best = score;
+                bestMove = m;
                 if (ply == 0) _rootBest = m;
                 if (score > alpha)
                 {
@@ -115,6 +139,12 @@ public sealed class Searcher
         }
 
         if (legal == 0) return inCheck ? -Mate + ply : 0;
+
+        int stored = best;
+        if (stored > Mate - 100) stored += ply;
+        else if (stored < -Mate + 100) stored -= ply;
+        Bound bound = best >= beta ? Bound.Lower : best > alpha0 ? Bound.Exact : Bound.Upper;
+        _tt.Store(key, bestMove, stored, depth, bound);
         return best;
     }
 
@@ -145,11 +175,12 @@ public sealed class Searcher
         return alpha;
     }
 
-    void ScoreMoves(Span<int> moves, Span<int> scores, int n)
+    void ScoreMoves(Span<int> moves, Span<int> scores, int n, int ttMove = 0)
     {
         for (int i = 0; i < n; i++)
         {
             int m = moves[i];
+            if (m == ttMove && m != 0) { scores[i] = 1_000_000; continue; }
             int from = MoveGen.From(m), to = MoveGen.To(m);
             int attacker = _pos.Board[from] % 6;
             int score = 0;

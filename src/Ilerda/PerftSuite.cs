@@ -16,6 +16,23 @@ public static class PerftSuite
         ("Posició 6", "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10", new ulong[] { 46, 2079, 89890 }),
     };
 
+    /// <summary>Recorre l'arbre comprovant que la clau incremental coincideix amb la recalculada.</summary>
+    static bool KeysConsistent(Position pos, int depth)
+    {
+        if (depth == 0) return true;
+        Span<int> moves = stackalloc int[320];
+        int n = MoveGen.Generate(pos, moves);
+        ulong before = pos.Key;
+        for (int i = 0; i < n; i++)
+        {
+            if (!pos.MakeMove(moves[i])) continue;
+            bool ok = pos.Key == pos.ComputeKey() && KeysConsistent(pos, depth - 1);
+            pos.UnmakeMove();
+            if (!ok || pos.Key != before) return false;
+        }
+        return true;
+    }
+
     /// <summary>Retorna true si tots els recomptes coincideixen.</summary>
     public static bool Run(Action<string> output)
     {
@@ -31,6 +48,10 @@ public static class PerftSuite
                 ok &= pass;
                 output($"{(pass ? "OK  " : "FAIL")} {name} profunditat {d}: {got} (esperat {expected[d - 1]})");
             }
+            pos.SetFen(fen);
+            bool keysOk = KeysConsistent(pos, 3);
+            ok &= keysOk;
+            output($"{(keysOk ? "OK  " : "FAIL")} {name} clau Zobrist incremental");
         }
         return ok;
     }

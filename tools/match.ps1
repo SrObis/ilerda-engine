@@ -3,12 +3,16 @@
   Compara dues versions del motor amb cutechess-cli i un test SPRT.
 
 .EXAMPLE
-  .\tools\match.ps1 -Nou "src\Ilerda\bin\Release\net8.0\Ilerda.exe" -Vell "C:\Motors\Ilerda-v0.1\Ilerda.exe"
+  # Versions guardades a Versions\ (vegeu tools\guardar-versio.ps1): n'hi ha prou amb el numero
+  .\tools\match.ps1 -Nou 0.3.0 -Vell 0.2.0
+
+.EXAMPLE
+  # Tambe es poden passar rutes a un .exe
+  .\tools\match.ps1 -Nou "src\Ilerda\bin\Release\net8.0\Ilerda.exe" -Vell 0.2.0
 
 .NOTES
-  Cal copiar la versio anterior a una carpeta apart ABANS de recompilar, perque
-  "dotnet build" sobreescriu l'.exe. cutechess-cli.exe ve dins el paquet de Cute Chess
-  per a Windows; passa'n la ruta amb -CutechessCli si no es al PATH.
+  cutechess-cli.exe ve dins el paquet de Cute Chess per a Windows; passa'n la ruta
+  amb -CutechessCli si no es al PATH.
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Nou,
@@ -24,6 +28,16 @@ param(
 $root = Split-Path -Parent $PSScriptRoot
 $openings = Join-Path $root "tools\openings.pgn"
 $out = Join-Path $root "tools\resultat.pgn"
+
+# Si el valor no es un fitxer, es busca com a versio guardada: Versions\Ilerda-<valor>\Ilerda.exe
+function Resolve-Motor([string]$valor) {
+    if (Test-Path $valor) { return $valor }
+    $guardat = Join-Path $root "Versions\Ilerda-$valor\Ilerda.exe"
+    if (Test-Path $guardat) { return $guardat }
+    return $valor
+}
+$Nou = Resolve-Motor $Nou
+$Vell = Resolve-Motor $Vell
 
 foreach ($f in @($Nou, $Vell, $openings)) {
     if (-not (Test-Path $f)) { Write-Error "No trobo: $f"; exit 1 }

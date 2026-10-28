@@ -5,3 +5,10 @@ obj/
 *.user
 *.suo
 *.log
+
+# Versions compilades de cada etapa (binaris: no es pugen a GitHub, es poden tornar a compilar)
+Versions/*
+!Versions/README.md
+
+# Resultat de les partides de prova
+tools/resultat.pgn
