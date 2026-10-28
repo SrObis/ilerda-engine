@@ -1,0 +1,174 @@
+namespace Ilerda;
+
+public static class Uci
+{
+    public const string Name = "Ilerda";
+    public const string Version = "0.1.0";
+    public const string Author = "Jordi Obis";
+
+    static readonly object OutLock = new();
+
+    static void Send(string s)
+    {
+        lock (OutLock)
+        {
+            Console.Out.WriteLine(s);
+            Console.Out.Flush();
+        }
+    }
+
+    public static void Loop()
+    {
+        var pos = new Position();
+        pos.SetFen(Position.StartFen);
+        var searcher = new Searcher();
+        Thread? worker = null;
+
+        void StopSearch()
+        {
+            if (worker is { IsAlive: true })
+            {
+                searcher.Stop = true;
+                worker.Join();
+            }
+        }
+
+        string? line;
+        while ((line = Console.ReadLine()) != null)
+        {
+            var t = line.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (t.Length == 0) continue;
+
+            switch (t[0])
+            {
+                case "uci":
+                    Send($"id name {Name} {Version}");
+                    Send($"id author {Author}");
+                    Send("uciok");
+                    break;
+
+                case "isready":
+                    Send("readyok");
+                    break;
+
+                case "ucinewgame":
+                    StopSearch();
+                    pos.SetFen(Position.StartFen);
+                    break;
+
+                case "position":
+                    StopSearch();
+                    ParsePosition(pos, t);
+                    break;
+
+                case "go":
+                    StopSearch();
+                    StartSearch(pos.Clone(), t, searcher, out worker);
+                    break;
+
+                case "stop":
+                    searcher.Stop = true;
+                    break;
+
+                case "perft":
+                case "divide":
+                {
+                    int depth = t.Length > 1 ? int.Parse(t[1]) : 1;
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    ulong nodes = t[0] == "divide" ? Perft.Divide(pos, depth, Send) : Perft.Run(pos, depth);
+                    Send($"nodes {nodes} time {sw.ElapsedMilliseconds}");
+                    break;
+                }
+
+                case "d":
+                    Send(pos.ToString());
+                    break;
+
+                case "quit":
+                    StopSearch();
+                    return;
+            }
+        }
+        StopSearch();
+    }
+
+    static void ParsePosition(Position pos, string[] t)
+    {
+        int i = 1;
+        if (i < t.Length && t[i] == "startpos")
+        {
+            pos.SetFen(Position.StartFen);
+            i++;
+        }
+        else if (i < t.Length && t[i] == "fen")
+        {
+            i++;
+            var fen = new List<string>();
+            while (i < t.Length && t[i] != "moves") fen.Add(t[i++]);
+            pos.SetFen(string.Join(' ', fen));
+        }
+
+        if (i < t.Length && t[i] == "moves")
+        {
+            for (i++; i < t.Length; i++) ApplyUciMove(pos, t[i]);
+        }
+        pos.ClearHistory();
+    }
+
+    public static bool ApplyUciMove(Position pos, string uci)
+    {
+        Span<int> moves = stackalloc int[320];
+        int n = MoveGen.Generate(pos, moves);
+        for (int i = 0; i < n; i++)
+        {
+            if (MoveGen.ToUci(moves[i]) != uci) continue;
+            return pos.MakeMove(moves[i]);
+        }
+        return false;
+    }
+
+    static void StartSearch(Position pos, string[] t, Searcher searcher, out Thread worker)
+    {
+        long wtime = 0, btime = 0, winc = 0, binc = 0, movetime = 0;
+        int movestogo = 0, depth = 64;
+        bool infinite = false, hasTime = false;
+
+        for (int i = 1; i < t.Length; i++)
+        {
+            switch (t[i])
+            {
+                case "wtime": wtime = long.Parse(t[++i]); hasTime = true; break;
+                case "btime": btime = long.Parse(t[++i]); hasTime = true; break;
+                case "winc": winc = long.Parse(t[++i]); break;
+                case "binc": binc = long.Parse(t[++i]); break;
+                case "movestogo": movestogo = int.Parse(t[++i]); break;
+                case "movetime": movetime = long.Parse(t[++i]); break;
+                case "depth": depth = int.Parse(t[++i]); break;
+                case "infinite": infinite = true; break;
+            }
+        }
+
+        long limit = 0;
+        if (movetime > 0) limit = movetime;
+        else if (hasTime && !infinite)
+        {
+            long remaining = pos.Side == 0 ? wtime : btime;
+            long inc = pos.Side == 0 ? winc : binc;
+            int divisor = movestogo > 0 ? Math.Min(movestogo, 40) : 30;
+            limit = remaining / divisor + inc * 3 / 4;
+            limit = Math.Min(limit, Math.Max(10, remaining - 50));
+            limit = Math.Max(limit, 10);
+        }
+
+        worker = new Thread(() =>
+        {
+            int best = searcher.Think(pos, depth, limit, Send);
+            if (infinite)
+            {
+                while (!searcher.Stop) Thread.Sleep(5);
+            }
+            Send($"bestmove {MoveGen.ToUci(best)}");
+        }, 16 * 1024 * 1024);
+        worker.Start();
+    }
+}
