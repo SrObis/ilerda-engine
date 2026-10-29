@@ -25,6 +25,32 @@ public sealed class Searcher
     readonly int[,,] _history = new int[2, 64, 64];
     const int HistoryMax = 6000;
 
+    // Reducció LMR segons profunditat i número de jugada: 0,75 + ln(d) * ln(m) / 2,25.
+    int[,] _lmr = BuildLmrTable(2.25);
+    int _lmrStart = 5;   // primera jugada (comptant des d'1) que es pot reduir
+    int _lmrHist = 2500; // cada tants punts de history, la reducció baixa 1
+
+    static int[,] BuildLmrTable(double divisor)
+    {
+        var t = new int[64, 64];
+        for (int d = 1; d < 64; d++)
+            for (int m = 1; m < 64; m++)
+                t[d, m] = (int)(0.75 + Math.Log(d) * Math.Log(m) / divisor);
+        return t;
+    }
+
+    /// <summary>Paràmetres afinables per UCI (per provar variants sense recompilar). Retorna false si no el coneix.</summary>
+    public bool SetOption(string name, int value)
+    {
+        switch (name.ToLowerInvariant())
+        {
+            case "lmrdiv": _lmr = BuildLmrTable(Math.Clamp(value, 50, 1000) / 100.0); return true;
+            case "lmrstart": _lmrStart = Math.Clamp(value, 2, 20); return true;
+            case "lmrhist": _lmrHist = Math.Clamp(value, 100, 100000); return true;
+            default: return false;
+        }
+    }
+
     public volatile bool Stop;
     public int BestMove { get; private set; }
 
@@ -162,9 +188,24 @@ public sealed class Searcher
             PickBest(moves, scores, i, n);
             int m = moves[i];
             bool quiet = IsQuiet(m); // abans de fer la jugada
+            int hist = _history[_pos.Side, MoveGen.From(m), MoveGen.To(m)];
             if (!_pos.MakeMove(m)) continue;
             legal++;
-            int score = -Negamax(depth - 1, -beta, -alpha, ply + 1);
+
+            // LMR: les jugades tranquil·les que es proven tard (ja ordenades) es cerquen a menys
+            // profunditat amb finestra nul·la; si sorprenen (superen alfa) es tornen a cercar a fons.
+            int score;
+            bool reduce = quiet && depth >= 3 && legal >= _lmrStart && ply > 0 && !inCheck
+                          && m != _killers[ply, 0] && m != _killers[ply, 1] && !_pos.InCheck();
+            if (reduce)
+            {
+                // Les jugades amb bon history (que han tallat sovint) es redueixen menys.
+                int r = _lmr[Math.Min(depth, 63), Math.Min(legal, 63)] - hist / _lmrHist;
+                r = Math.Min(r, depth - 2);
+                score = r > 0 ? -Negamax(depth - 1 - r, -alpha - 1, -alpha, ply + 1) : alpha + 1;
+                if (score > alpha) score = -Negamax(depth - 1, -beta, -alpha, ply + 1);
+            }
+            else score = -Negamax(depth - 1, -beta, -alpha, ply + 1);
             _pos.UnmakeMove();
             if (_stopped) return 0;
 

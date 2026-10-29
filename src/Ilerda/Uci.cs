@@ -3,7 +3,7 @@ namespace Ilerda;
 public static class Uci
 {
     public const string Name = "Ilerda";
-    public const string Version = "0.5.0";
+    public const string Version = "0.6.1";
     public const string Author = "Jordi Obis";
 
     static readonly object OutLock = new();
@@ -45,16 +45,19 @@ public static class Uci
                     Send($"id name {Name} {Version}");
                     Send($"id author {Author}");
                     Send("option name Hash type spin default 64 min 1 max 4096");
+                    Send("option name LmrDiv type spin default 225 min 50 max 1000");
+                    Send("option name LmrStart type spin default 5 min 2 max 20");
+                    Send("option name LmrHist type spin default 2500 min 100 max 100000");
                     Send("uciok");
                     break;
 
                 case "setoption":
                     // setoption name Hash value <mb>
-                    if (t.Length >= 5 && t[1] == "name" && t[2].Equals("Hash", StringComparison.OrdinalIgnoreCase)
-                        && t[3] == "value" && int.TryParse(t[4], out int mb))
+                    if (t.Length >= 5 && t[1] == "name" && t[3] == "value" && int.TryParse(t[4], out int ov))
                     {
                         StopSearch();
-                        searcher.SetHash(Math.Clamp(mb, 1, 4096));
+                        if (t[2].Equals("Hash", StringComparison.OrdinalIgnoreCase)) searcher.SetHash(Math.Clamp(ov, 1, 4096));
+                        else searcher.SetOption(t[2], ov);
                     }
                     break;
 

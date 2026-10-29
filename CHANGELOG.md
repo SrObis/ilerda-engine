@@ -1,5 +1,19 @@
 # Canvis
 
+## 0.6.1 — LMR (Late Move Reductions)
+
+**Problema.** La cerca dedicava la mateixa profunditat a les jugades tranquil·les que es proven tard (ja ordenades per la taula de transposició, les captures, els killers i l'history), que gairebé mai són la millor.
+
+**Canvi.**
+
+- Les jugades tranquil·les a partir de la cinquena es cerquen a profunditat reduïda amb finestra nul·la, i si superen alfa es tornen a cercar a fons. No es redueixen les captures, les promocions, els escacs, els killers, res en escac ni a l'arrel.
+- La reducció és `0,75 + ln(profunditat) · ln(jugada) / 2,25`, menys 1 cada 2500 punts d'*history*, i mai fa que la profunditat baixi de 1.
+- Els tres paràmetres són opcions UCI (`LmrDiv`, `LmrStart`, `LmrHist`) per poder-ne provar variants sense recompilar, amb `tools/ajustar.ps1`.
+
+**Resultat.** Contra la v0.5.0 (10+0,1, 100 partides, SPRT 0/10): +47 =30 -23, +85 ± 59 Elo, LOS 99,8 %. L'SPRT no va concloure, però el signe és molt clar. Una primera versió, que reduïa des de la quarta jugada i sense tenir en compte l'*history*, només va fer +35 ± 58 Elo i no es va publicar.
+
+**Afinament.** Sis variants dels paràmetres, 200 partides cadascuna (5+0,05): cap queda fora del soroll (de -2 a +19 Elo, marge ±40). No s'adopta cap canvi. Vegeu el README.
+
 ## 0.5.0 — Poda null move
 
 **Problema.** La cerca explorava totes les jugades de posicions on el bàndol ja està tan bé que no hi ha res a temer.
