@@ -2,7 +2,7 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda és el nom romà de Lleida).
 
-**Estat:** v0.4 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, protocol UCI i avaluació amb taules de posició. Encara no té xarxa NNUE. Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.5 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, poda null move, protocol UCI i avaluació amb taules de posició. Encara no té xarxa NNUE. Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
@@ -10,6 +10,7 @@ Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda
 - Cerca negamax amb alfa-beta, aprofundiment iteratiu, cerca de quiescència, extensió per escac i ordenació MVV-LVA.
 - Claus Zobrist incrementals, taula de transposició (opció UCI `Hash`, 64 MB per defecte) i detecció de repeticions.
 - Ordenació de jugades tranquil·les amb killers (2 per nivell) i history.
+- Poda null move (no en escac, ni sense peces, ni dues vegades seguides).
 - Control de temps (`wtime`, `btime`, `winc`, `binc`, `movestogo`, `movetime`, `depth`, `infinite`).
 - Avaluació *tapered* amb taules de posició PeSTO (mig joc i final, barrejats segons la fase de la partida).
 - Comandes extra: `perft N`, `divide N` i `d` (mostra el tauler).
@@ -47,7 +48,8 @@ El matx fa servir les obertures de `tools/openings.pgn`. Vegeu [Versions](Versio
 - [ ] Magic bitboards (ara els atacs de peces lliscants es calculen amb rajos)
 - [x] Killers i history (v0.4: +49 ± 59 Elo contra la v0.3, SPRT sense conclusió en 100 partides; s'hi dona per bona perquè no perd i arriba més lluny)
 - [ ] Escacs primer a l'ordenació de jugades
-- [ ] Poda: null move, LMR, futility
+- [x] Null move (v0.5: +74 ± 60 Elo contra la v0.4, SPRT sense conclusió en 100 partides però LOS 99 %)
+- [ ] Poda: LMR, futility, SEE
 - [x] Proves automàtiques amb cutechess-cli i SPRT
 - [ ] Avaluació NNUE entrenada amb dades d'autojoc
 - [ ] Enviar a CCRL i CEGT, i després a les divisions baixes del TCEC

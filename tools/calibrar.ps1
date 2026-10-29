@@ -39,7 +39,7 @@ foreach ($nivell in $Nivells) {
         -each tc=$Tc `
         -openings file="$openings" format=pgn order=random plies=8 `
         -games 2 -rounds $Rounds -repeat -recover `
-        -concurrency $Concurrency 2>&1
+        -concurrency $Concurrency 2>&1 | Tee-Object -FilePath (Join-Path $env:TEMP "calibrar-$nivell.log")
 
     $linia = $out | Select-String "Score of Ilerda vs SF: (\d+) - (\d+) - (\d+)" | Select-Object -Last 1
     if (-not $linia) { Write-Warning "Sense resultat per al nivell $nivell"; continue }

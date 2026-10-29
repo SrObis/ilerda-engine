@@ -1,5 +1,20 @@
 # Canvis
 
+## 0.5.0 — Poda null move
+
+**Problema.** La cerca explorava totes les jugades de posicions on el bàndol ja està tan bé que no hi ha res a temer.
+
+**Canvi.**
+
+- `Position.MakeNullMove`/`UnmakeNullMove` passen el torn sense moure i mantenen la clau Zobrist.
+- A `Negamax`, si el bàndol té peces, no està en escac i l'avaluació ja supera beta, es cerca amb el torn passat i profunditat reduïda (`R = 2 + profunditat/6`). Si encara supera beta, es poda la branca.
+- No s'aplica en escac, a l'arrel, sense peces (perill de zugzwang), dues vegades seguides ni quan es busquen mats.
+- `ilerda test` comprova també les claus després d'un null move.
+
+**Resultat.** Contra la v0.4.0 (10+0,1, 100 partides, SPRT 0/10): +48 =25 -27, +74 ± 60 Elo, LOS 99,2 %. L'SPRT no va concloure, però la millora és molt probable.
+
+**Referència externa.** Contra Stockfish amb `UCI_Elo` limitat (10+0,1, 40 partides per nivell, versió 0.4.0): 84 % al 1800, 63 % al 2100, 50 % al 2400 i 19 % al 2700, és a dir, al voltant de 2400 en aquest test. És una referència orientativa: el ritme és molt ràpid i l'escala de Stockfish no és la de CCRL.
+
 ## 0.4.0 — Killers i history
 
 **Problema.** Les jugades que no capturen res es provaven en l'ordre en què es generaven. L'alfa-beta talla molt més quan les millors jugades surten primer.

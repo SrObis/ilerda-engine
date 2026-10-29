@@ -264,6 +264,32 @@ public sealed class Position
         return true;
     }
 
+    /// <summary>Passa el torn sense moure (per a la poda null move). Només s'ha de fer fora d'escac.</summary>
+    public void MakeNullMove()
+    {
+        _stack[_ply++] = new Undo { Move = 0, Captured = -1, Castling = Castling, Ep = Ep, Halfmove = Halfmove, Key = Key };
+        _keyHist[_histCount++] = Key;
+        if (Ep != -1) Key ^= ZEp[Ep & 7];
+        Ep = -1;
+        Key ^= ZSide;
+        Side ^= 1;
+        Halfmove++;
+    }
+
+    public void UnmakeNullMove()
+    {
+        var u = _stack[--_ply];
+        _histCount--;
+        Side ^= 1;
+        Ep = u.Ep;
+        Halfmove = u.Halfmove;
+        Key = u.Key;
+    }
+
+    /// <summary>True si el bàndol té alguna peça que no sigui peó ni rei (evita null move en zugzwang).</summary>
+    public bool HasNonPawnMaterial(int color) =>
+        (Bb[color * 6 + Pc.Knight] | Bb[color * 6 + Pc.Bishop] | Bb[color * 6 + Pc.Rook] | Bb[color * 6 + Pc.Queen]) != 0;
+
     public void UnmakeMove()
     {
         var u = _stack[--_ply];

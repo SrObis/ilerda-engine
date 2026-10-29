@@ -108,7 +108,7 @@ public sealed class Searcher
         return _stopped;
     }
 
-    int Negamax(int depth, int alpha, int beta, int ply)
+    int Negamax(int depth, int alpha, int beta, int ply, bool allowNull = true)
     {
         if (CheckStop()) return 0;
         _nodes++;
@@ -135,6 +135,20 @@ public sealed class Searcher
                 if (tb == Bound.Lower && ts >= beta) return ts;
                 if (tb == Bound.Upper && ts <= alpha) return ts;
             }
+        }
+
+        // Null move: si passant el torn la posició encara supera beta, és molt probable que
+        // qualsevol jugada real també ho faci, i es poda. No en escac, ni sense peces
+        // (zugzwang), ni dues vegades seguides, ni quan busquem mats.
+        if (allowNull && !inCheck && ply > 0 && depth >= 3 && beta < Mate - 100
+            && _pos.HasNonPawnMaterial(_pos.Side) && Eval.Evaluate(_pos) >= beta)
+        {
+            int r = 2 + depth / 6;
+            _pos.MakeNullMove();
+            int ns = -Negamax(depth - 1 - r, -beta, -beta + 1, ply + 1, false);
+            _pos.UnmakeNullMove();
+            if (_stopped) return 0;
+            if (ns >= beta) return ns >= Mate - 100 ? beta : ns;
         }
 
         Span<int> moves = stackalloc int[320];

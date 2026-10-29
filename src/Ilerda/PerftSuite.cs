@@ -23,6 +23,13 @@ public static class PerftSuite
         Span<int> moves = stackalloc int[320];
         int n = MoveGen.Generate(pos, moves);
         ulong before = pos.Key;
+        if (!pos.InCheck())
+        {
+            pos.MakeNullMove();
+            bool nullOk = pos.Key == pos.ComputeKey();
+            pos.UnmakeNullMove();
+            if (!nullOk || pos.Key != before) return false;
+        }
         for (int i = 0; i < n; i++)
         {
             if (!pos.MakeMove(moves[i])) continue;
