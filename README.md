@@ -16,6 +16,7 @@ Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda
 - Control de temps (`wtime`, `btime`, `winc`, `binc`, `movestogo`, `movetime`, `depth`, `infinite`).
 - Avaluació *tapered* amb taules de posició PeSTO (mig joc i final, barrejats segons la fase de la partida).
 - Comandes extra: `perft N`, `divide N` i `d` (mostra el tauler).
+- `ilerda book <línies> <fitxer> [fils] [llavor] [nodes] [marge]`: crea un llibre d'obertures EPD equilibrades per a `datagen`. Vegeu [Llibre d'obertures propi](#llibre-dobertures-propi-ilerda-book).
 - `ilerda datagen <partides> <nodes> <fitxer> [fils] [llavor] [llibre.epd]`: autojoc amb límit de nodes per generar dades d'entrenament (`FEN | puntuació | resultat`). Amb 0 partides no s'atura. Els fitxers van a `data/` (no es puja a GitHub).
 
 ## Compilar i provar
@@ -86,6 +87,19 @@ El *Static Exchange Evaluation* simula les recaptures a la casella d'una captura
 Variants contra el SEE complet (200 partides a 5+0,05, marge d'uns ±40 Elo): sense SEE -33, només ordenació -10, només quiescència +21 i quiescència amb marge de 100 cp +10. Tot queda dins del soroll i el +21 no es va confirmar. Cap versió arriba al LOS del 95 % que es demana per adoptar un canvi, així que no es fusiona. El codi es conserva a `feature/see`.
 
 Abans, a la v0.8.0 també es va provar posar els escacs primer a l'ordenació (`prova/escacs-primer`, -9 ± 40 Elo, LOS 33 %), amb el mateix resultat.
+
+## Llibre d'obertures propi (`ilerda book`)
+
+`ilerda book <línies> <fitxer> [fils] [llavor] [nodes] [marge]` crea un llibre EPD per passar-lo a `datagen`. Per què no n'hi ha prou amb obertures aleatòries ni amb descarregar un llibre:
+
+- **Les obertures de `datagen` eren 8–9 semijugades a l'atzar**, amb un únic filtre (±400 cp). Surten estructures absurdes (1.h4, 1.a4, Ta3, Ch3...) i el resultat final de la partida depèn més de l'error de l'obertura que de la qualitat del joc, que és el que Texel i la NNUE han d'aprendre.
+- **Un llibre equilibrat dona dades més representatives:** posicions que s'assemblen a les de partides reals, menys duplicats i un resultat final menys sorollós. Per a Texel (uns 780 paràmetres) el guany és petit; per a la NNUE (molts més) la diversitat pesa més.
+- **Un llibre propi evita dependre de descàrregues** (`8moves_v3`) i es pot regenerar amb una llavor o uns marges diferents.
+- **Filtrar jugades a l'atzar no va bastar.** La primera idea era prohibir els peons de les columnes a, b, g, h, però és una regla fixa. Un filtre d'avaluació (descartar la línia si el motor la valora fora de ±30 cp després de les primeres jugades) tampoc: l'avaluació PeSTO no castiga 1.a4 ni Ta3, i descartava el 98 % dels intents sense treure les jugades estranyes. El mètode final és triar, a cada semijugada, **només entre les jugades que el motor valora a menys de 40 cp de la millor** (cerca de 1.500 nodes per candidata). Així cap jugada és absurda segons el motor.
+- **Regla afegida:** a les 6 primeres semijugades no es mouen peons de les columnes a, b, g, h, ni cavalls a la vora, ni torres. L'avaluació sola no les veu com a dolentes.
+- **Filtres finals:** la posició d'inici és dins de ±30 cp a les dues primeres semijugades i dins del marge (50 cp per defecte, cerca de 20.000 nodes) a la resta, sense escac, sense captura com a millor jugada i sense duplicats (clau Zobrist).
+
+És més lent que el llibre aleatori (uns 10 % dels intents s'accepten). El llibre barrejat amb obertures aleatòries és una opció per a la NNUE: `datagen` accepta el llibre i fa 0–2 semijugades aleatòries després.
 
 ## Full de ruta
 
