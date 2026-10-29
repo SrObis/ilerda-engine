@@ -74,6 +74,19 @@ Referència externa de la v0.7.0 contra Stockfish amb `UCI_Elo` limitat (10+0,1,
 
 Referència externa (v0.4.0 contra Stockfish amb `UCI_Elo` limitat, 10+0,1, 40 partides per nivell): 84 % al 1800, 63 % al 2100, 50 % al 2400 i 19 % al 2700, és a dir, al voltant de 2400 en aquest test. És una referència orientativa: el ritme és molt ràpid i l'escala de Stockfish no és la de CCRL. Vegeu `tools/calibrar.ps1`.
 
+## SEE (provat i no adoptat)
+
+El *Static Exchange Evaluation* simula les recaptures a la casella d'una captura per saber si perd material. Es va provar com a v0.8.0 a la branca `feature/see` (opcions UCI `See` i `SeeMargin`), contra la v0.7.0 a 10+0,1:
+
+| Versió | Partides | Resultat | Elo | LOS |
+|---|---|---|---|---|
+| SEE complet (captures perdedores al final de l'ordenació i fora de la quiescència) | 400 | +137 =139 -124 | +11 ± 28 | ~79 % |
+| Només a la quiescència (`See=2`) | 400 | +125 =146 -129 | -3,5 ± 27 | 40 % |
+
+Variants contra el SEE complet (200 partides a 5+0,05, marge d'uns ±40 Elo): sense SEE -33, només ordenació -10, només quiescència +21 i quiescència amb marge de 100 cp +10. Tot queda dins del soroll i el +21 no es va confirmar. Cap versió arriba al LOS del 95 % que es demana per adoptar un canvi, així que no es fusiona. El codi es conserva a `feature/see`.
+
+Abans, a la v0.8.0 també es va provar posar els escacs primer a l'ordenació (`prova/escacs-primer`, -9 ± 40 Elo, LOS 33 %), amb el mateix resultat.
+
 ## Full de ruta
 
 - [x] Avaluació amb taules de posició (PeSTO)
@@ -84,7 +97,7 @@ Referència externa (v0.4.0 contra Stockfish amb `UCI_Elo` limitat, 10+0,1, 40 p
 - [x] Null move (v0.5: +74 ± 60 Elo contra la v0.4, SPRT sense conclusió en 100 partides però LOS 99 %)
 - [x] LMR (v0.6.1: +85 ± 59 Elo contra la v0.5.0, LOS 99,8 %; la primera versió, v0.6.0, només va fer +35 ± 58). Vegeu [Proves d'afinament](#proves-dafinament)
 - [x] Reverse futility i futility (v0.7.0: +74 ± 53 Elo contra la v0.6.1, LOS 99,7 %)
-- [ ] SEE (primera versió provada i no adoptada: captures perdedores al final de l'ordenació i fora de la quiescència; contra la v0.7.0, 400 partides a 10+0,1, +137 =139 -124, uns +11 ± 28 Elo, LOS ~79 %. Es conserva a la branca `feature/see` mentre es proven variants)
+- [ ] SEE (provat i no adoptat; vegeu [SEE](#see-provat-i-no-adoptat))
 - [x] Comanda `datagen` per generar dades d'autojoc
 - [x] Proves automàtiques amb cutechess-cli i SPRT
 - [ ] Avaluació NNUE entrenada amb dades d'autojoc
