@@ -12,3 +12,6 @@ Versions/*
 
 # Resultat de les partides de prova
 tools/resultat.pgn
+
+# Dades d'autojoc (datagen)
+data/

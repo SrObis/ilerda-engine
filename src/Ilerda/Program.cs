@@ -9,6 +9,17 @@ if (args.Length >= 1 && args[0] == "test")
     return PerftSuite.Run(Console.WriteLine) ? 0 : 1;
 }
 
+//   ilerda datagen <partides> <nodes> <fitxer> [fils] [llavor] [llibre.epd]  -> partides d'autojoc per generar dades
+if (args.Length >= 4 && args[0] == "datagen")
+{
+    DataGen.Run(
+        long.Parse(args[1]), long.Parse(args[2]), args[3],
+        args.Length > 4 ? int.Parse(args[4]) : Math.Max(1, Environment.ProcessorCount - 1),
+        args.Length > 5 ? int.Parse(args[5]) : Environment.TickCount,
+        args.Length > 6 ? args[6] : null);
+    return 0;
+}
+
 if (args.Length >= 2 && args[0] == "perft")
 {
     var pos = new Position();

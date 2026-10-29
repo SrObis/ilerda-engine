@@ -54,6 +54,12 @@ public sealed class Searcher
     public volatile bool Stop;
     public int BestMove { get; private set; }
 
+    /// <summary>Puntuació (cp, des del bàndol que juga) de l'última iteració completada.</summary>
+    public int LastScore { get; private set; }
+
+    /// <summary>Límit de nodes (0 = sense límit). No s'inicia una iteració nova passat el límit, i la cerca es talla a 8 vegades el límit.</summary>
+    public long NodeLimit { get; set; }
+
     public void SetHash(int megabytes) => _tt.Resize(megabytes);
     public void NewGame()
     {
@@ -83,6 +89,7 @@ public sealed class Searcher
         _stopped = false;
         Stop = false;
         BestMove = 0;
+        LastScore = 0;
         _sw.Restart();
         Array.Clear(_killers);
         // La history es conserva entre jugades però s'envelleix perquè no domini la cerca nova.
@@ -108,11 +115,13 @@ public sealed class Searcher
             if (_stopped) break;
 
             BestMove = _rootBest;
+            LastScore = score;
             long ms = _sw.ElapsedMilliseconds;
             long nps = ms > 0 ? _nodes * 1000 / ms : _nodes;
             info?.Invoke($"info depth {depth} score {FormatScore(score)} nodes {_nodes} time {ms} nps {nps} pv {MoveGen.ToUci(BestMove)}");
 
             if (Math.Abs(score) > Mate - 100) break;
+            if (NodeLimit > 0 && _nodes >= NodeLimit) break;
         }
         return BestMove;
     }
@@ -129,7 +138,8 @@ public sealed class Searcher
 
     bool CheckStop()
     {
-        if ((_nodes & 2047) == 0 && (Stop || (_limitMs > 0 && _sw.ElapsedMilliseconds >= _limitMs)))
+        if ((_nodes & 2047) == 0 && (Stop || (_limitMs > 0 && _sw.ElapsedMilliseconds >= _limitMs)
+                                     || (NodeLimit > 0 && _nodes >= NodeLimit * 8)))
             _stopped = true;
         return _stopped;
     }
