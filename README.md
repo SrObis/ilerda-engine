@@ -2,7 +2,7 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda és el nom romà de Lleida).
 
-**Estat:** v0.6 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, poda null move, LMR, protocol UCI i avaluació amb taules de posició. Encara no té xarxa NNUE. Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.7 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, poda null move, LMR, reverse futility i futility, protocol UCI i avaluació amb taules de posició. Encara no té xarxa NNUE. Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
@@ -12,9 +12,11 @@ Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda
 - Ordenació de jugades tranquil·les amb killers (2 per nivell) i history.
 - Poda null move (no en escac, ni sense peces, ni dues vegades seguides).
 - LMR: les jugades tranquil·les que es proven tard es cerquen a menys profunditat i, si sorprenen, es tornen a cercar a fons. Els paràmetres són opcions UCI (`LmrDiv`, `LmrStart`, `LmrHist`).
+- Reverse futility (profunditat ≤ 6) i futility (≤ 4), amb marges configurables (`RfpMargin`, `FutMargin`).
 - Control de temps (`wtime`, `btime`, `winc`, `binc`, `movestogo`, `movetime`, `depth`, `infinite`).
 - Avaluació *tapered* amb taules de posició PeSTO (mig joc i final, barrejats segons la fase de la partida).
 - Comandes extra: `perft N`, `divide N` i `d` (mostra el tauler).
+- `ilerda datagen <partides> <nodes> <fitxer> [fils] [llavor] [llibre.epd]`: autojoc amb límit de nodes per generar dades d'entrenament (`FEN | puntuació | resultat`). Amb 0 partides no s'atura. Els fitxers van a `data/` (no es puja a GitHub).
 
 ## Compilar i provar
 
@@ -68,7 +70,9 @@ Referència externa (v0.4.0 contra Stockfish amb `UCI_Elo` limitat, 10+0,1, 40 p
 - [ ] Escacs primer a l'ordenació de jugades
 - [x] Null move (v0.5: +74 ± 60 Elo contra la v0.4, SPRT sense conclusió en 100 partides però LOS 99 %)
 - [x] LMR (v0.6.1: +85 ± 59 Elo contra la v0.5.0, LOS 99,8 %; la primera versió, v0.6.0, només va fer +35 ± 58). Vegeu [Proves d'afinament](#proves-dafinament)
-- [ ] Poda: futility, SEE
+- [x] Reverse futility i futility (v0.7.0: +74 ± 53 Elo contra la v0.6.1, LOS 99,7 %)
+- [ ] SEE
+- [x] Comanda `datagen` per generar dades d'autojoc
 - [x] Proves automàtiques amb cutechess-cli i SPRT
 - [ ] Avaluació NNUE entrenada amb dades d'autojoc
 - [ ] Enviar a CCRL i CEGT, i després a les divisions baixes del TCEC

@@ -30,6 +30,9 @@ public sealed class Searcher
     int _lmrStart = 5;   // primera jugada (comptant des d'1) que es pot reduir
     int _lmrHist = 2500; // cada tants punts de history, la reducció baixa 1
 
+    int _rfpMargin = 90;  // marge de reverse futility per nivell de profunditat (1000 = pràcticament desactivada)
+    int _futMargin = 110; // marge de futility per nivell de profunditat
+
     static int[,] BuildLmrTable(double divisor)
     {
         var t = new int[64, 64];
@@ -47,6 +50,8 @@ public sealed class Searcher
             case "lmrdiv": _lmr = BuildLmrTable(Math.Clamp(value, 50, 1000) / 100.0); return true;
             case "lmrstart": _lmrStart = Math.Clamp(value, 2, 20); return true;
             case "lmrhist": _lmrHist = Math.Clamp(value, 100, 100000); return true;
+            case "rfpmargin": _rfpMargin = Math.Clamp(value, 0, 1000); return true;
+            case "futmargin": _futMargin = Math.Clamp(value, 0, 1000); return true;
             default: return false;
         }
     }
@@ -173,11 +178,20 @@ public sealed class Searcher
             }
         }
 
+        bool pv = beta - alpha > 1;
+        int staticEval = inCheck ? -Inf : Eval.Evaluate(_pos);
+
+        // Reverse futility: si l'avaluació estàtica supera beta amb un bon marge a poca profunditat,
+        // la posició és tan bona que es talla sense cercar. No en PV, escac ni quan busquem mats.
+        if (!pv && !inCheck && ply > 0 && depth <= 6 && beta < Mate - 100 && beta > -Mate + 100
+            && staticEval - _rfpMargin * depth >= beta)
+            return staticEval;
+
         // Null move: si passant el torn la posició encara supera beta, és molt probable que
         // qualsevol jugada real també ho faci, i es poda. No en escac, ni sense peces
         // (zugzwang), ni dues vegades seguides, ni quan busquem mats.
         if (allowNull && !inCheck && ply > 0 && depth >= 3 && beta < Mate - 100
-            && _pos.HasNonPawnMaterial(_pos.Side) && Eval.Evaluate(_pos) >= beta)
+            && _pos.HasNonPawnMaterial(_pos.Side) && staticEval >= beta)
         {
             int r = 2 + depth / 6;
             _pos.MakeNullMove();
@@ -201,6 +215,15 @@ public sealed class Searcher
             int hist = _history[_pos.Side, MoveGen.From(m), MoveGen.To(m)];
             if (!_pos.MakeMove(m)) continue;
             legal++;
+
+            // Futility: a poca profunditat, una jugada tranquil·la que no dona escac i amb l'avaluació
+            // molt per sota d'alfa no la remuntarà. Sempre es cerca la primera jugada legal.
+            if (quiet && legal > 1 && !pv && !inCheck && depth <= 4 && alpha > -Mate + 100
+                && staticEval + _futMargin * depth <= alpha && !_pos.InCheck())
+            {
+                _pos.UnmakeMove();
+                continue;
+            }
 
             // LMR: les jugades tranquil·les que es proven tard (ja ordenades) es cerquen a menys
             // profunditat amb finestra nul·la; si sorprenen (superen alfa) es tornen a cercar a fons.

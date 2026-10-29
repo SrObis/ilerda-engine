@@ -3,7 +3,7 @@ namespace Ilerda;
 public static class Uci
 {
     public const string Name = "Ilerda";
-    public const string Version = "0.6.1";
+    public const string Version = "0.7.0";
     public const string Author = "Jordi Obis";
 
     static readonly object OutLock = new();
@@ -48,6 +48,8 @@ public static class Uci
                     Send("option name LmrDiv type spin default 225 min 50 max 1000");
                     Send("option name LmrStart type spin default 5 min 2 max 20");
                     Send("option name LmrHist type spin default 2500 min 100 max 100000");
+                    Send("option name RfpMargin type spin default 90 min 0 max 1000");
+                    Send("option name FutMargin type spin default 110 min 0 max 1000");
                     Send("uciok");
                     break;
 

@@ -1,5 +1,19 @@
 # Canvis
 
+## 0.7.0 — Reverse futility i futility
+
+**Problema.** A poca profunditat la cerca encara explorava jugades en posicions ja decidides pel material o la posició.
+
+**Canvi.**
+
+- *Reverse futility*: a profunditat 6 o menys, si l'avaluació estàtica supera beta amb un marge de 90 cp per nivell, es talla la branca. No en línia principal, en escac ni quan es busquen mats.
+- *Futility*: a profunditat 4 o menys, una jugada tranquil·la que no dona escac i amb l'avaluació 110 cp per nivell per sota d'alfa es salta. La primera jugada legal es cerca sempre.
+- Els marges són opcions UCI (`RfpMargin`, `FutMargin`) per afinar-los amb `tools/ajustar.ps1`; encara no s'han afinat.
+
+**Resultat.** Contra la v0.6.1 (10+0,1, 100 partides, SPRT 0/10): +40 =41 -19, +74 ± 53 Elo, LOS 99,7 %. L'SPRT no va concloure, però el signe és molt clar.
+
+**Eina nova: `datagen`.** `ilerda datagen <partides> <nodes> <fitxer> [fils] [llavor] [llibre.epd]` fa partides d'autojoc amb límit de nodes i escriu `FEN | puntuació (blanques) | resultat` de les posicions tranquil·les, per a Texel i NNUE. Obertures aleatòries o d'un llibre EPD, i adjudicació de partides decidides. `Searcher` té ara `NodeLimit` i `LastScore`.
+
 ## 0.6.1 — LMR (Late Move Reductions)
 
 **Problema.** La cerca dedicava la mateixa profunditat a les jugades tranquil·les que es proven tard (ja ordenades per la taula de transposició, les captures, els killers i l'history), que gairebé mai són la millor.
