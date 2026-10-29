@@ -1,5 +1,19 @@
 # Canvis
 
+## 0.4.0 — Killers i history
+
+**Problema.** Les jugades que no capturen res es provaven en l'ordre en què es generaven. L'alfa-beta talla molt més quan les millors jugades surten primer.
+
+**Canvi.**
+
+- *Killers*: es recorden dues jugades tranquil·les per nivell de la cerca que han tallat una línia, i es proven abans que la resta.
+- *History*: cada jugada tranquil·la que talla suma punts (per bàndol, casella d'origen i de destí, amb límit); les que en tenen més es proven primer. S'envelleix (es divideix per 2) abans de cada cerca.
+- Ordre final: jugada de la taula de transposició, captures (MVV-LVA), promocions, killers i history.
+
+**Resultat.** A la posició inicial arriba a profunditat 8 en ~1 s (la 0.3.0 en trigava 5,5). Contra la v0.3.0 (10+0,1, 100 partides, SPRT 0/10): +43 =28 -29, +49 ± 59 Elo, LOS 95 %. L'SPRT no va concloure, així que la millora és probable però no confirmada.
+
+**Eines noves.** `tools/calibrar.ps1` estima l'Elo d'una versió jugant contra Stockfish amb `UCI_Elo` limitat.
+
 ## 0.3.0 — Taula de transposició i repeticions
 
 **Problema.** La v0.2 no detectava repeticions i tornava a cercar les mateixes posicions per camins diferents, així que només arribava a profunditat 6–9.

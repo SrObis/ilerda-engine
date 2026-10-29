@@ -20,11 +20,34 @@ public sealed class Searcher
 
     readonly TranspositionTable _tt = new(64);
 
+    // Ordenació de jugades tranquil·les: killers (2 per ply) i history [bàndol, des de, a].
+    readonly int[,] _killers = new int[128, 2];
+    readonly int[,,] _history = new int[2, 64, 64];
+    const int HistoryMax = 6000;
+
     public volatile bool Stop;
     public int BestMove { get; private set; }
 
     public void SetHash(int megabytes) => _tt.Resize(megabytes);
-    public void NewGame() => _tt.Clear();
+    public void NewGame()
+    {
+        _tt.Clear();
+        Array.Clear(_history);
+    }
+
+    void UpdateQuietHistory(int m, int ply, int depth)
+    {
+        if (ply < 128 && _killers[ply, 0] != m)
+        {
+            _killers[ply, 1] = _killers[ply, 0];
+            _killers[ply, 0] = m;
+        }
+        ref int h = ref _history[_pos.Side, MoveGen.From(m), MoveGen.To(m)];
+        h = Math.Min(h + depth * depth, HistoryMax);
+    }
+
+    bool IsQuiet(int m) =>
+        MoveGen.Promo(m) == 0 && MoveGen.Flag(m) != MoveGen.FlagEp && _pos.Board[MoveGen.To(m)] == -1;
 
     public int Think(Position pos, int maxDepth, long timeMs, Action<string>? info)
     {
@@ -35,6 +58,11 @@ public sealed class Searcher
         Stop = false;
         BestMove = 0;
         _sw.Restart();
+        Array.Clear(_killers);
+        // La history es conserva entre jugades però s'envelleix perquè no domini la cerca nova.
+        for (int c = 0; c < 2; c++)
+            for (int f = 0; f < 64; f++)
+                for (int t = 0; t < 64; t++) _history[c, f, t] /= 2;
 
         // Moviment de reserva: el primer legal.
         Span<int> rootMoves = stackalloc int[320];
@@ -112,13 +140,14 @@ public sealed class Searcher
         Span<int> moves = stackalloc int[320];
         Span<int> scores = stackalloc int[320];
         int n = MoveGen.Generate(_pos, moves);
-        ScoreMoves(moves, scores, n, ttMove);
+        ScoreMoves(moves, scores, n, ttMove, ply);
 
         int legal = 0, best = -Inf, bestMove = 0;
         for (int i = 0; i < n; i++)
         {
             PickBest(moves, scores, i, n);
             int m = moves[i];
+            bool quiet = IsQuiet(m); // abans de fer la jugada
             if (!_pos.MakeMove(m)) continue;
             legal++;
             int score = -Negamax(depth - 1, -beta, -alpha, ply + 1);
@@ -133,7 +162,11 @@ public sealed class Searcher
                 if (score > alpha)
                 {
                     alpha = score;
-                    if (alpha >= beta) break;
+                    if (alpha >= beta)
+                    {
+                        if (quiet) UpdateQuietHistory(m, ply, depth);
+                        break;
+                    }
                 }
             }
         }
@@ -175,7 +208,7 @@ public sealed class Searcher
         return alpha;
     }
 
-    void ScoreMoves(Span<int> moves, Span<int> scores, int n, int ttMove = 0)
+    void ScoreMoves(Span<int> moves, Span<int> scores, int n, int ttMove = 0, int ply = -1)
     {
         for (int i = 0; i < n; i++)
         {
@@ -188,6 +221,13 @@ public sealed class Searcher
             if (victim >= 0) score = 10000 + Eval.Value[victim] * 10 - attacker;
             int promo = MoveGen.Promo(m);
             if (promo != 0) score += 9000 + Eval.Value[promo];
+            else if (victim < 0 && ply >= 0 && ply < 128)
+            {
+                // Jugada tranquil·la: killers per sobre, després history (< 7000, sota de les captures).
+                if (m == _killers[ply, 0]) score = 8000;
+                else if (m == _killers[ply, 1]) score = 7500;
+                else score = _history[_pos.Side, from, to];
+            }
             scores[i] = score;
         }
     }
