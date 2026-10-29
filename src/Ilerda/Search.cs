@@ -83,6 +83,16 @@ public sealed class Searcher
         h = Math.Min(h + depth * depth, HistoryMax);
     }
 
+    /// <summary>La captura no perd material segons el SEE. Si la víctima val tant com l'atacant o més,
+    /// és segur i no cal calcular-lo.</summary>
+    bool IsGoodCapture(int m)
+    {
+        int victim = MoveGen.Flag(m) == MoveGen.FlagEp ? Pc.Pawn : _pos.Board[MoveGen.To(m)] % 6;
+        int attacker = _pos.Board[MoveGen.From(m)] % 6;
+        if (Eval.Value[victim] >= Eval.Value[attacker]) return true;
+        return _pos.See(m) >= 0;
+    }
+
     bool IsQuiet(int m) =>
         MoveGen.Promo(m) == 0 && MoveGen.Flag(m) != MoveGen.FlagEp && _pos.Board[MoveGen.To(m)] == -1;
 
@@ -286,6 +296,8 @@ public sealed class Searcher
         for (int i = 0; i < n; i++)
         {
             PickBest(moves, scores, i, n);
+            // Les captures perdedores no es cerquen a la quiescència (les ordenades darrere van totes igual).
+            if (scores[i] < -50_000) break;
             if (!_pos.MakeMove(moves[i])) continue;
             int score = -Quiesce(-beta, -alpha, ply + 1);
             _pos.UnmakeMove();
@@ -306,8 +318,13 @@ public sealed class Searcher
             int attacker = _pos.Board[from] % 6;
             int score = 0;
             int victim = MoveGen.Flag(m) == MoveGen.FlagEp ? Pc.Pawn : (_pos.Board[to] == -1 ? -1 : _pos.Board[to] % 6);
-            if (victim >= 0) score = 10000 + Eval.Value[victim] * 10 - attacker;
             int promo = MoveGen.Promo(m);
+            if (victim >= 0)
+            {
+                score = 10000 + Eval.Value[victim] * 10 - attacker;
+                // Captures perdedores (SEE < 0) després de les jugades tranquil·les.
+                if (promo == 0 && !IsGoodCapture(m)) score -= 100_000;
+            }
             if (promo != 0) score += 9000 + Eval.Value[promo];
             else if (victim < 0 && ply >= 0 && ply < 128)
             {

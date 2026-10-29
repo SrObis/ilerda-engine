@@ -60,6 +60,29 @@ public static class PerftSuite
             ok &= keysOk;
             output($"{(keysOk ? "OK  " : "FAIL")} {name} clau Zobrist incremental");
         }
+        ok &= SeeCases(output);
+        return ok;
+    }
+
+    /// <summary>Captures amb el resultat del SEE conegut (casella = fila * 8 + columna, a1 = 0).</summary>
+    static bool SeeCases(Action<string> output)
+    {
+        var cases = new (string name, string fen, int from, int to, int expected)[]
+        {
+            ("peó guanya cavall defensat", "4k3/8/3p4/4n3/3P4/8/8/4K3 w - - 0 1", 27, 36, 220),
+            ("dama perd contra peó defensor", "4k3/8/3p4/4p3/8/8/4Q3/4K3 w - - 0 1", 12, 36, -800),
+            ("torre captura torre defensada", "3rk3/8/8/3r4/8/8/3R4/3RK3 w - - 0 1", 11, 35, 500),
+        };
+        bool ok = true;
+        foreach (var (name, fen, from, to, expected) in cases)
+        {
+            var pos = new Position();
+            pos.SetFen(fen);
+            int got = pos.See(MoveGen.Encode(from, to));
+            bool pass = got == expected;
+            ok &= pass;
+            output($"{(pass ? "OK  " : "FAIL")} SEE {name}: {got} (esperat {expected})");
+        }
         return ok;
     }
 }

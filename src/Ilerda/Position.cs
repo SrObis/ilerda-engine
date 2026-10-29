@@ -210,6 +210,64 @@ public sealed class Position
         return false;
     }
 
+    static readonly int[] SeeValue = { 100, 320, 330, 500, 900, 20000 };
+
+    /// <summary>Totes les peces (dels dos colors) que ataquen sq amb l'ocupació occ.</summary>
+    ulong AttackersTo(int sq, ulong occ)
+    {
+        ulong diag = Bb[Pc.Bishop] | Bb[Pc.Queen] | Bb[6 + Pc.Bishop] | Bb[6 + Pc.Queen];
+        ulong line = Bb[Pc.Rook] | Bb[Pc.Queen] | Bb[6 + Pc.Rook] | Bb[6 + Pc.Queen];
+        return ((Attacks.Pawn[1, sq] & Bb[Pc.Pawn]) | (Attacks.Pawn[0, sq] & Bb[6 + Pc.Pawn])
+                | (Attacks.Knight[sq] & (Bb[Pc.Knight] | Bb[6 + Pc.Knight]))
+                | (Attacks.King[sq] & (Bb[Pc.King] | Bb[6 + Pc.King]))
+                | (Attacks.Bishop(sq, occ) & diag)
+                | (Attacks.Rook(sq, occ) & line)) & occ;
+    }
+
+    /// <summary>
+    /// Static Exchange Evaluation: guany de material (en cp) de la captura m si els dos bàndols
+    /// es recapturen a la casella de destinació amb la peça menys valuosa fins que els convingui parar.
+    /// No es fa servir per a promocions.
+    /// </summary>
+    public int See(int m)
+    {
+        int from = MoveGen.From(m), to = MoveGen.To(m);
+        bool ep = MoveGen.Flag(m) == MoveGen.FlagEp;
+        Span<int> gain = stackalloc int[34];
+        int victim = ep ? Pc.Pawn : (Board[to] == -1 ? -1 : Board[to] % 6);
+        gain[0] = victim < 0 ? 0 : SeeValue[victim];
+        int attPt = Board[from] % 6;
+
+        ulong occ = Occ & ~(1UL << from);
+        if (ep) occ &= ~(1UL << (to + (Side == 0 ? -8 : 8)));
+        ulong atk = AttackersTo(to, occ);
+        int side = Side ^ 1, d = 0;
+
+        while (true)
+        {
+            ulong sideAtk = atk & ByColor[side];
+            if (sideAtk == 0) break;
+            int pt = 0;
+            ulong bb = 0;
+            for (; pt < 6; pt++)
+            {
+                bb = sideAtk & Bb[side * 6 + pt];
+                if (bb != 0) break;
+            }
+            // El rei només pot capturar si no queda cap defensor rival.
+            if (pt == Pc.King && (atk & ByColor[side ^ 1]) != 0) break;
+            d++;
+            gain[d] = SeeValue[attPt] - gain[d - 1];
+            attPt = pt;
+            occ &= ~(bb & (0UL - bb));
+            atk = AttackersTo(to, occ);
+            side ^= 1;
+        }
+
+        for (int i = d; i > 0; i--) gain[i - 1] = -Math.Max(-gain[i - 1], gain[i]);
+        return gain[0];
+    }
+
     public int KingSquare(int color) => BitOperations.TrailingZeroCount(Bb[color * 6 + Pc.King]);
 
     public bool InCheck() => IsAttacked(KingSquare(Side), Side ^ 1);
