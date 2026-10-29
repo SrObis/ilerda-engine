@@ -214,6 +214,25 @@ public sealed class Position
 
     public bool InCheck() => IsAttacked(KingSquare(Side), Side ^ 1);
 
+    /// <summary>Aproximació per a l'ordenació: la peça que arriba a la destinació ataca el rei rival
+    /// (escac directe; no detecta escacs descoberts, enroc ni captura al pas).</summary>
+    public bool GivesDirectCheck(int m)
+    {
+        int from = MoveGen.From(m), to = MoveGen.To(m), promo = MoveGen.Promo(m);
+        int pt = promo != 0 ? promo : Board[from] % 6;
+        int king = KingSquare(Side ^ 1);
+        ulong occ = (Occ & ~(1UL << from)) | (1UL << to);
+        return pt switch
+        {
+            Pc.Pawn => (Attacks.Pawn[Side, to] & (1UL << king)) != 0,
+            Pc.Knight => (Attacks.Knight[to] & (1UL << king)) != 0,
+            Pc.Bishop => (Attacks.Bishop(to, occ) & (1UL << king)) != 0,
+            Pc.Rook => (Attacks.Rook(to, occ) & (1UL << king)) != 0,
+            Pc.Queen => ((Attacks.Bishop(to, occ) | Attacks.Rook(to, occ)) & (1UL << king)) != 0,
+            _ => false,
+        };
+    }
+
     /// <summary>Fa el moviment. Si deixa el propi rei en escac, el desfà i retorna false.</summary>
     public bool MakeMove(int m)
     {

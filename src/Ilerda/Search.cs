@@ -314,6 +314,7 @@ public sealed class Searcher
                 // Jugada tranquil·la: killers per sobre, després history (< 7000, sota de les captures).
                 if (m == _killers[ply, 0]) score = 8000;
                 else if (m == _killers[ply, 1]) score = 7500;
+                else if (_pos.GivesDirectCheck(m)) score = 7000; // escacs després dels killers i abans de l'history
                 else score = _history[_pos.Side, from, to];
             }
             scores[i] = score;
