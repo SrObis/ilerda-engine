@@ -50,6 +50,8 @@ public static class Uci
                     Send("option name LmrHist type spin default 2500 min 100 max 100000");
                     Send("option name RfpMargin type spin default 90 min 0 max 1000");
                     Send("option name FutMargin type spin default 110 min 0 max 1000");
+                    Send("option name See type spin default 3 min 0 max 3");
+                    Send("option name SeeMargin type spin default 0 min 0 max 500");
                     Send("uciok");
                     break;
 

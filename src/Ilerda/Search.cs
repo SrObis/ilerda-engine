@@ -33,6 +33,9 @@ public sealed class Searcher
     int _rfpMargin = 90;  // marge de reverse futility per nivell de profunditat (1000 = pràcticament desactivada)
     int _futMargin = 110; // marge de futility per nivell de profunditat
 
+    int _seeMode = 3;   // bit 1: captures perdedores al final de l'ordenació; bit 2: es descarten a la quiescència (0 = sense SEE)
+    int _seeMargin = 0; // a la quiescència només es descarten les captures amb SEE < -marge
+
     static int[,] BuildLmrTable(double divisor)
     {
         var t = new int[64, 64];
@@ -52,6 +55,8 @@ public sealed class Searcher
             case "lmrhist": _lmrHist = Math.Clamp(value, 100, 100000); return true;
             case "rfpmargin": _rfpMargin = Math.Clamp(value, 0, 1000); return true;
             case "futmargin": _futMargin = Math.Clamp(value, 0, 1000); return true;
+            case "see": _seeMode = Math.Clamp(value, 0, 3); return true;
+            case "seemargin": _seeMargin = Math.Clamp(value, 0, 500); return true;
             default: return false;
         }
     }
@@ -85,12 +90,12 @@ public sealed class Searcher
 
     /// <summary>La captura no perd material segons el SEE. Si la víctima val tant com l'atacant o més,
     /// és segur i no cal calcular-lo.</summary>
-    bool IsGoodCapture(int m)
+    bool IsGoodCapture(int m, int margin = 0)
     {
         int victim = MoveGen.Flag(m) == MoveGen.FlagEp ? Pc.Pawn : _pos.Board[MoveGen.To(m)] % 6;
         int attacker = _pos.Board[MoveGen.From(m)] % 6;
         if (Eval.Value[victim] >= Eval.Value[attacker]) return true;
-        return _pos.See(m) >= 0;
+        return _pos.See(m) >= -margin;
     }
 
     bool IsQuiet(int m) =>
@@ -296,8 +301,11 @@ public sealed class Searcher
         for (int i = 0; i < n; i++)
         {
             PickBest(moves, scores, i, n);
-            // Les captures perdedores no es cerquen a la quiescència (les ordenades darrere van totes igual).
-            if (scores[i] < -50_000) break;
+            // Les captures perdedores no es cerquen a la quiescència. Amb el SEE ja calculat a l'ordenació
+            // i sense marge, n'hi ha prou amb la puntuació.
+            if ((_seeMode & 2) != 0 && MoveGen.Promo(moves[i]) == 0
+                && ((_seeMode & 1) != 0 && _seeMargin == 0 ? scores[i] < -50_000 : !IsGoodCapture(moves[i], _seeMargin)))
+                continue;
             if (!_pos.MakeMove(moves[i])) continue;
             int score = -Quiesce(-beta, -alpha, ply + 1);
             _pos.UnmakeMove();
@@ -323,7 +331,7 @@ public sealed class Searcher
             {
                 score = 10000 + Eval.Value[victim] * 10 - attacker;
                 // Captures perdedores (SEE < 0) després de les jugades tranquil·les.
-                if (promo == 0 && !IsGoodCapture(m)) score -= 100_000;
+                if (promo == 0 && (_seeMode & 1) != 0 && !IsGoodCapture(m)) score -= 100_000;
             }
             if (promo != 0) score += 9000 + Eval.Value[promo];
             else if (victim < 0 && ply >= 0 && ply < 128)
