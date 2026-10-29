@@ -87,6 +87,17 @@ Variants contra el SEE complet (200 partides a 5+0,05, marge d'uns ±40 Elo): se
 
 Abans, a la v0.8.0 també es va provar posar els escacs primer a l'ordenació (`prova/escacs-primer`, -9 ± 40 Elo, LOS 33 %), amb el mateix resultat.
 
+## Deduplicar les dades (`tools/dedup`)
+
+`dotnet run -c Release --project tools/dedup -- <entrada> <sortida> [bits]` agrupa les posicions repetides d'un fitxer de `datagen`. És un projecte C# a part, a `tools/`, i no forma part del motor.
+
+- **Per què:** Texel i la NNUE tracten cada línia com una observació. Una posició repetida mil vegades pesa mil vegades més que una d'única, i les estimacions d'èxit es fixen a les obertures.
+- **Com:** la posició es compara pels quatre primers camps del FEN (peces, torn, enroc i al pas); el comptador de mitja jugada i el de jugades no la canvien. Es fa en dues passades i la clau és un hash de 64 bits (la probabilitat de col·lisió amb ~100 M posicions és de l'ordre de 3·10⁻⁴).
+- **Format de sortida:** `FEN | puntuació mitjana | victòries blanques | taules | victòries negres`. En comptes d'escollir una sola aparició, les ramificacions d'una posició (partides que hi acaben de maneres diferents) es conserven com a comptadors, i el resultat mitjà és una estimació més fiable que un sol 1, 0,5 o 0.
+- **Memòria:** la taula té 2^`bits` entrades (27 per defecte, uns 3,8 GB; cal que sigui més gran que 1,3 vegades les posicions úniques). Amb 28 bits en fa uns 7,5 GB. Si es queda curta, s'atura amb un missatge.
+
+**Resultat amb les dades actuals** (`datagen-001`, `-002`, `-003` i `-004` ajuntats): 113.487.990 línies → **107.041.927 posicions úniques**, 0 línies no vàlides, 2,6 min (28 bits). Només un **5,7 %** eren repetides, molt menys del que s'esperava: les obertures aleatòries de 8–9 semijugades són prou variades. Per tant la deduplicació és sobretot higiene de dades i no millora gaire l'entrenament; l'estimació agrupada només afecta les poques posicions repetides. El que pesarà més és barrejar bé per partida, la qualitat de les etiquetes (5.000 nodes) i la varietat d'obertures (vegeu el llibre d'obertures propi a la branca `feature/llibre`).
+
 ## Full de ruta
 
 - [x] Avaluació amb taules de posició (PeSTO)
