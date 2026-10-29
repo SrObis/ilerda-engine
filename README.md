@@ -80,7 +80,7 @@ Referència externa (v0.4.0 contra Stockfish amb `UCI_Elo` limitat, 10+0,1, 40 p
 - [x] Taula de transposició amb Zobrist, i detecció de repetició (v0.3: +230 Elo contra la v0.2 en partides ràpides)
 - [ ] Magic bitboards (ara els atacs de peces lliscants es calculen amb rajos)
 - [x] Killers i history (v0.4: +49 ± 59 Elo contra la v0.3, SPRT sense conclusió en 100 partides; s'hi dona per bona perquè no perd i arriba més lluny)
-- [ ] Escacs primer a l'ordenació de jugades
+- [ ] Escacs primer a l'ordenació de jugades (provat i no adoptat: les jugades tranquil·les que donen escac directe es provaven després dels killers; contra la v0.7.0, 200 partides a 10+0,1, -9 ± 40 Elo, LOS 33 %, és a dir, indistingible del soroll)
 - [x] Null move (v0.5: +74 ± 60 Elo contra la v0.4, SPRT sense conclusió en 100 partides però LOS 99 %)
 - [x] LMR (v0.6.1: +85 ± 59 Elo contra la v0.5.0, LOS 99,8 %; la primera versió, v0.6.0, només va fer +35 ± 58). Vegeu [Proves d'afinament](#proves-dafinament)
 - [x] Reverse futility i futility (v0.7.0: +74 ± 53 Elo contra la v0.6.1, LOS 99,7 %)
