@@ -84,7 +84,7 @@ Referència externa (v0.4.0 contra Stockfish amb `UCI_Elo` limitat, 10+0,1, 40 p
 - [x] Null move (v0.5: +74 ± 60 Elo contra la v0.4, SPRT sense conclusió en 100 partides però LOS 99 %)
 - [x] LMR (v0.6.1: +85 ± 59 Elo contra la v0.5.0, LOS 99,8 %; la primera versió, v0.6.0, només va fer +35 ± 58). Vegeu [Proves d'afinament](#proves-dafinament)
 - [x] Reverse futility i futility (v0.7.0: +74 ± 53 Elo contra la v0.6.1, LOS 99,7 %)
-- [ ] SEE
+- [ ] SEE (primera versió provada i no adoptada: captures perdedores al final de l'ordenació i fora de la quiescència; contra la v0.7.0, 400 partides a 10+0,1, +137 =139 -124, uns +11 ± 28 Elo, LOS ~79 %. Es conserva a la branca `feature/see` mentre es proven variants)
 - [x] Comanda `datagen` per generar dades d'autojoc
 - [x] Proves automàtiques amb cutechess-cli i SPRT
 - [ ] Avaluació NNUE entrenada amb dades d'autojoc
