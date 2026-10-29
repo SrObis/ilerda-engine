@@ -59,6 +59,19 @@ Els paràmetres de l'LMR (v0.6.2, configuració per defecte = v0.6.1) es van pro
 
 **Conclusió:** cap variant se separa de la base més del que el soroll permet. Tot i que `LmrStart=4` (+19) és la més alta, no es pot distingir de la sort, i no s'adopta cap canvi. L'LMR està en una zona plana: afinar aquests tres paràmetres no dona més, i el pas següent és un altre canvi de cerca o de dades. Cap variant s'ha confirmat amb un match de 100 partides a 10+0,1; si es vol adoptar-ne alguna, caldria fer-ho abans.
 
+Els marges de la poda de la v0.7.0 es van provar igual (300 partides per variant, 5+0,05, marge d'error d'uns **±35 Elo**):
+
+| Paràmetre | Per defecte | Variant | Resultat | Punts | Elo vs base |
+|---|---|---|---|---|---|
+| `RfpMargin` | 90 | 65 | +110 =90 -100 | 51,7 % | +12 |
+| | | 120 | +86 =105 -109 | 46,2 % | -27 |
+| `FutMargin` | 110 | 80 | +97 =92 -111 | 47,7 % | -16 |
+| | | 145 | +107 =87 -106 | 50,2 % | +1 |
+
+Cap variant se separa del soroll i no s'adopta cap canvi. Si hi ha tendència, és que un `RfpMargin` més petit potser va una mica millor, però no es pot distingir de la sort.
+
+Referència externa de la v0.7.0 contra Stockfish amb `UCI_Elo` limitat (10+0,1, 100 partides per nivell): 57 % al 2400 (~2449), 45 % al 2550 (~2515) i 28 % al 2700 (~2532), amb una mitjana d'**uns 2500 Elo** (±35). Una primera tanda de 40 partides per nivell va donar ~2485, i el 3000 va quedar saturat (4 %). Amb les mateixes limitacions que la referència següent.
+
 Referència externa (v0.4.0 contra Stockfish amb `UCI_Elo` limitat, 10+0,1, 40 partides per nivell): 84 % al 1800, 63 % al 2100, 50 % al 2400 i 19 % al 2700, és a dir, al voltant de 2400 en aquest test. És una referència orientativa: el ritme és molt ràpid i l'escala de Stockfish no és la de CCRL. Vegeu `tools/calibrar.ps1`.
 
 ## Full de ruta
