@@ -3,7 +3,7 @@ namespace Ilerda;
 public static class Uci
 {
     public const string Name = "Ilerda";
-    public const string Version = "0.7.0";
+    public const string Version = "0.9.0";
     public const string Author = "Jordi Obis";
 
     static readonly object OutLock = new();
@@ -23,6 +23,7 @@ public static class Uci
         pos.SetFen(Position.StartFen);
         var searcher = new Searcher();
         Thread? worker = null;
+        long moveOverhead = 0;
 
         void StopSearch()
         {
@@ -45,11 +46,14 @@ public static class Uci
                     Send($"id name {Name} {Version}");
                     Send($"id author {Author}");
                     Send("option name Hash type spin default 64 min 1 max 4096");
+                    Send("option name Threads type spin default 1 min 1 max 256");
+                    Send("option name MoveOverhead type spin default 0 min 0 max 5000");
                     Send("option name LmrDiv type spin default 225 min 50 max 1000");
                     Send("option name LmrStart type spin default 5 min 2 max 20");
                     Send("option name LmrHist type spin default 2500 min 100 max 100000");
                     Send("option name RfpMargin type spin default 90 min 0 max 1000");
                     Send("option name FutMargin type spin default 110 min 0 max 1000");
+                    Send("option name SoftTime type spin default 100 min 10 max 100");
                     Send("uciok");
                     break;
 
@@ -59,6 +63,8 @@ public static class Uci
                     {
                         StopSearch();
                         if (t[2].Equals("Hash", StringComparison.OrdinalIgnoreCase)) searcher.SetHash(Math.Clamp(ov, 1, 4096));
+                        else if (t[2].Equals("Threads", StringComparison.OrdinalIgnoreCase)) searcher.SetThreads(ov);
+                        else if (t[2].Equals("MoveOverhead", StringComparison.OrdinalIgnoreCase)) moveOverhead = Math.Clamp(ov, 0, 5000);
                         else searcher.SetOption(t[2], ov);
                     }
                     break;
@@ -80,7 +86,7 @@ public static class Uci
 
                 case "go":
                     StopSearch();
-                    StartSearch(pos.Clone(), t, searcher, out worker);
+                    StartSearch(pos.Clone(), t, searcher, moveOverhead, out worker);
                     break;
 
                 case "stop":
@@ -144,7 +150,10 @@ public static class Uci
         return false;
     }
 
-    static void StartSearch(Position pos, string[] t, Searcher searcher, out Thread worker)
+    static long ArgLong(string[] t, ref int i) =>
+        i + 1 < t.Length && long.TryParse(t[i + 1], out long v) ? (i++, v).Item2 : 0;
+
+    static void StartSearch(Position pos, string[] t, Searcher searcher, long moveOverhead, out Thread worker)
     {
         long wtime = 0, btime = 0, winc = 0, binc = 0, movetime = 0;
         int movestogo = 0, depth = 64;
@@ -154,29 +163,32 @@ public static class Uci
         {
             switch (t[i])
             {
-                case "wtime": wtime = long.Parse(t[++i]); hasTime = true; break;
-                case "btime": btime = long.Parse(t[++i]); hasTime = true; break;
-                case "winc": winc = long.Parse(t[++i]); break;
-                case "binc": binc = long.Parse(t[++i]); break;
-                case "movestogo": movestogo = int.Parse(t[++i]); break;
-                case "movetime": movetime = long.Parse(t[++i]); break;
-                case "depth": depth = int.Parse(t[++i]); break;
+                case "wtime": wtime = ArgLong(t, ref i); hasTime = true; break;
+                case "btime": btime = ArgLong(t, ref i); hasTime = true; break;
+                case "winc": winc = ArgLong(t, ref i); break;
+                case "binc": binc = ArgLong(t, ref i); break;
+                case "movestogo": movestogo = (int)ArgLong(t, ref i); break;
+                case "movetime": movetime = ArgLong(t, ref i); break;
+                case "depth": depth = (int)Math.Clamp(ArgLong(t, ref i), 1, 64); break;
                 case "infinite": infinite = true; break;
             }
         }
 
         long limit = 0;
-        if (movetime > 0) limit = movetime;
+        if (movetime > 0) limit = Math.Max(1, movetime - moveOverhead);
         else if (hasTime && !infinite)
         {
-            long remaining = pos.Side == 0 ? wtime : btime;
+            long remaining = Math.Max(0, (pos.Side == 0 ? wtime : btime) - moveOverhead);
             long inc = pos.Side == 0 ? winc : binc;
             int divisor = movestogo > 0 ? Math.Min(movestogo, 40) : 30;
             limit = remaining / divisor + inc * 3 / 4;
-            limit = Math.Min(limit, Math.Max(10, remaining - 50));
-            limit = Math.Max(limit, 10);
+            // Mai més d'un terç del temps que queda, i sempre un mínim perquè hi hagi jugada.
+            limit = Math.Min(limit, remaining / 3);
+            limit = Math.Max(limit, 5);
         }
 
+        // Si "stop" arriba abans que el fil comenci, no es perdi: es restableix aquí, no dins de Think.
+        searcher.Stop = false;
         worker = new Thread(() =>
         {
             int best = searcher.Think(pos, depth, limit, Send);
