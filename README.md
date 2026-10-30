@@ -2,7 +2,7 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda és el nom romà de Lleida).
 
-**Estat:** v0.7 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, poda null move, LMR, reverse futility i futility, protocol UCI i avaluació amb taules de posició. Encara no té xarxa NNUE. Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.7 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, poda null move, LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació amb taules de posició. Encara no té xarxa NNUE. Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
@@ -13,7 +13,8 @@ Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda
 - Poda null move (no en escac, ni sense peces, ni dues vegades seguides).
 - LMR: les jugades tranquil·les que es proven tard es cerquen a menys profunditat i, si sorprenen, es tornen a cercar a fons. Els paràmetres són opcions UCI (`LmrDiv`, `LmrStart`, `LmrHist`).
 - Reverse futility (profunditat ≤ 6) i futility (≤ 4), amb marges configurables (`RfpMargin`, `FutMargin`).
-- Control de temps (`wtime`, `btime`, `winc`, `binc`, `movestogo`, `movetime`, `depth`, `infinite`).
+- Cerca multifil amb Lazy SMP (opció UCI `Threads`, 1 per defecte): els fils ajudants cerquen la mateixa posició amb una taula de transposició compartida sense bloquejos i el fil principal tria la jugada. Vegeu [Multifil](#multifil-lazy-smp).
+- Control de temps (`wtime`, `btime`, `winc`, `binc`, `movestogo`, `movetime`, `depth`, `infinite`), amb opció `MoveOverhead` (0 ms per defecte) i un límit del terç del temps que queda.
 - Avaluació *tapered* amb taules de posició PeSTO (mig joc i final, barrejats segons la fase de la partida).
 - Comandes extra: `perft N`, `divide N` i `d` (mostra el tauler).
 - `ilerda datagen <partides> <nodes> <fitxer> [fils] [llavor] [llibre.epd]`: autojoc amb límit de nodes per generar dades d'entrenament (`FEN | puntuació | resultat`). Amb 0 partides no s'atura. Els fitxers van a `data/` (no es puja a GitHub).
@@ -74,6 +75,27 @@ Referència externa de la v0.7.0 contra Stockfish amb `UCI_Elo` limitat (10+0,1,
 
 Referència externa (v0.4.0 contra Stockfish amb `UCI_Elo` limitat, 10+0,1, 40 partides per nivell): 84 % al 1800, 63 % al 2100, 50 % al 2400 i 19 % al 2700, és a dir, al voltant de 2400 en aquest test. És una referència orientativa: el ritme és molt ràpid i l'escala de Stockfish no és la de CCRL. Vegeu `tools/calibrar.ps1`.
 
+## Multifil (Lazy SMP)
+
+L'opció `Threads` (1 a 256, 1 per defecte) activa els fils ajudants. Cada fil té els seus killers, *history* i tauler; només es comparteix la taula de transposició.
+
+- **Taula compartida sense bloquejos:** cada entrada són dues paraules de 64 bits (dades i `clau ^ dades`). Si dos fils escriuen alhora i l'entrada queda a mitges, la comprovació falla i es tracta com a no trobada.
+- **Diversitat:** els ajudants se salten alguns nivells d'aprofundiment (`(profunditat + id) % 3 == 0`) perquè no repeteixin tots la mateixa feina. Només el fil principal informa i fixa la jugada.
+- **Un fil és idèntic a la 0.7.0:** `go depth 12` des de la posició inicial dona els mateixos nodes (4.485.351). `datagen` continua usant un sol fil per cerca.
+- **Temps:** el límit dur no passa d'un terç del temps que queda, es descompta `MoveOverhead` (0 per defecte), i `SoftTime` (100 per defecte = desactivat) permet no iniciar una iteració nova passat un percentatge del límit.
+- **UCI:** el `stop` que arribava just després d'un `go` ja no es perd, i els valors no numèrics de `go` s'ignoren en lloc de fer caure el motor.
+
+Proves (200 partides a 5+0,05, marge d'uns ±40 Elo), variant contra el mateix executable amb la configuració per defecte:
+
+| Variant | Resultat | Punts | Elo vs base |
+|---|---|---|---|
+| `Threads=4` (contra 1 fil) | +102 =58 -40 | 65,5 % | +111 |
+| `SoftTime=60` | +65 =73 -62 | 50,8 % | +5 |
+
+Comprovació a un fil contra la 0.7.0 (10+0,1, 100 partides): amb `MoveOverhead` de 30 ms, +26 =44 -30, -14 ± 51 Elo (LOS 29,6 %); amb `MoveOverhead` de 0 (el valor per defecte), +39 =29 -32, +24 ± 58 Elo (LOS 79,7 %). Les dues dins del soroll: a un fil la cerca és idèntica a la 0.7.0 i només canvia el temps.
+
+Els 4 fils guanyen molt clar. `SoftTime=60` queda dins del soroll i es deixa desactivat. Per defecte el motor continua amb 1 fil, així que la força per defecte no canvia; per a tornejos cal posar `Threads` al nombre de nuclis disponibles.
+
 ## SEE (provat i no adoptat)
 
 El *Static Exchange Evaluation* simula les recaptures a la casella d'una captura per saber si perd material. Es va provar com a v0.8.0 a la branca `feature/see` (opcions UCI `See` i `SeeMargin`), contra la v0.7.0 a 10+0,1:
@@ -91,6 +113,7 @@ Abans, a la v0.8.0 també es va provar posar els escacs primer a l'ordenació (`
 
 - [x] Avaluació amb taules de posició (PeSTO)
 - [x] Taula de transposició amb Zobrist, i detecció de repetició (v0.3: +230 Elo contra la v0.2 en partides ràpides)
+- [x] Cerca multifil Lazy SMP (`Threads=4`: +111 Elo contra 1 fil; vegeu [Multifil](#multifil-lazy-smp))
 - [ ] Magic bitboards (ara els atacs de peces lliscants es calculen amb rajos)
 - [x] Killers i history (v0.4: +49 ± 59 Elo contra la v0.3, SPRT sense conclusió en 100 partides; s'hi dona per bona perquè no perd i arriba més lluny)
 - [ ] Escacs primer a l'ordenació de jugades (provat i no adoptat: les jugades tranquil·les que donen escac directe es provaven després dels killers; contra la v0.7.0, 200 partides a 10+0,1, -9 ± 40 Elo, LOS 33 %, és a dir, indistingible del soroll)
