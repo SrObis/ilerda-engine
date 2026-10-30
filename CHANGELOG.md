@@ -1,5 +1,18 @@
 # Canvis
 
+## 0.9.0 — Cerca multifil (Lazy SMP)
+
+**Problema.** El motor només feia servir un nucli, i en tornejos de mòduls es compta amb tots els de la màquina.
+
+**Canvi.**
+
+- Opció UCI `Threads` (1 per defecte): fils ajudants que cerquen la mateixa posició amb la taula de transposició compartida. El fil principal porta el temps i tria la jugada; els ajudants se salten alguns nivells d'aprofundiment per no repetir feina.
+- La taula de transposició és ara sense bloquejos: cada entrada són dues paraules de 64 bits (dades i `clau ^ dades`) i una entrada escrita a mitges es descarta com a no trobada.
+- Opcions `MoveOverhead` (0 ms per defecte) i `SoftTime` (100 = desactivat). El límit dur de temps no passa d'un terç del temps que queda.
+- UCI: el `stop` que arribava just després d'un `go` ja no es perd, i els valors no numèrics de `go` s'ignoren en lloc de fer caure el motor.
+
+**Resultat.** Amb 1 fil la cerca és idèntica a la 0.7.0 (mateixos nodes a profunditat 12) i contra ella fa +39 =29 -32, +24 ± 58 Elo (LOS 79,7 %, 10+0,1, 100 partides): soroll. `Threads=4` contra `Threads=1` (5+0,05, 200 partides): +102 =58 -40, +111 Elo. `SoftTime=60`: +5 Elo, soroll i no s'activa. Per a tornejos cal posar `Threads` al nombre de nuclis.
+
 ## 0.7.0 — Reverse futility i futility
 
 **Problema.** A poca profunditat la cerca encara explorava jugades en posicions ja decidides pel material o la posició.
