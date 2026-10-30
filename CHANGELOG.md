@@ -1,5 +1,21 @@
 # Canvis
 
+## 0.10.0 — Avaluació NNUE
+
+**Problema.** L'avaluació eren les taules de posició PeSTO, escrites a mà i sense entendre res de la relació entre les peces.
+
+**Canvi.**
+
+- Nova avaluació NNUE (`Nnue.cs`): xarxa 768 → 256 (×2 perspectives) → 1 amb SCReLU. Les característiques són (peça, casella) vistes des de cada bàndol, així que els acumuladors s'actualitzen sumant i restant a cada peça afegida o treta (`AddPiece`/`RemovePiece`) i desfer una jugada els restaura sol. L'avaluació final és vectoritzada (`Vector<short>`).
+- La xarxa va **dins de l'executable** (`src/Ilerda/nets/ilerda-256.bin`, 395 KB, recurs incrustat) i es carrega en arrencar. Opció UCI `EvalFile`: buida = xarxa incrustada, `none` = tornar a PeSTO, o la ruta d'un altre fitxer `quantised.bin` de bullet.
+- Entrenada a Kaggle (GPU T4, bullet, 4,5 min) amb 50 M de posicions de `datagen` de la 0.6.1 (5.000 nodes, obertures aleatòries), deduplicades. Vegeu `tools/nnue/kaggle-bullet.md`.
+- Ordre `eval` per veure l'avaluació d'una posició.
+
+**Resultat.** Contra la 0.9.1 (10+0,1, 200 partides, un fil): +131 =31 -38, **+175 ± 49 Elo**, LOS 100 %. A 5+0,05 contra el mateix executable amb PeSTO: +135 =26 -39, +182 ± 51 Elo. La cerca va uns 1,7 cops més lenta que amb PeSTO (≈2,2 M contra ≈3,9 M nodes per segon), i tot i això guanya amb claredat.
+
+**Eines.** `tools/subset` (extreu un subconjunt de les dades al format de bullet), `tools/ajustar.ps1` amb `-Contra` (jugar contra una altra versió) i noms de registre vàlids.
+
+
 ## 0.9.1 — Magic bitboards
 
 **Problema.** Els atacs de torres, alfils i dames es calculaven amb rajos casella a casella, i era una part notable del temps de cada node.

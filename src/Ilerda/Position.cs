@@ -31,6 +31,9 @@ public sealed class Position
     /// <summary>Clau Zobrist de la posició, mantinguda de forma incremental.</summary>
     public ulong Key;
 
+    /// <summary>Acumuladors NNUE (blanques i negres, N neurones cadascun), mantinguts per AddPiece/RemovePiece quan hi ha xarxa carregada.</summary>
+    public short[] Acc = Array.Empty<short>();
+
     static readonly ulong[,] ZPiece = new ulong[12, 64];
     static readonly ulong[] ZCastle = new ulong[16];
     static readonly ulong[] ZEp = new ulong[8];
@@ -111,6 +114,7 @@ public sealed class Position
         c.Fullmove = Fullmove;
         c.Key = Key;
         Array.Copy(_keyHist, c._keyHist, _histCount);
+        c.Acc = (short[])Acc.Clone();
         c._histCount = _histCount;
         return c;
     }
@@ -135,6 +139,7 @@ public sealed class Position
         Bb[piece] |= b;
         ByColor[piece / 6] |= b;
         Board[sq] = piece;
+        if (Nnue.Loaded) Nnue.Add(Acc, piece, sq);
     }
 
     void RemovePiece(int sq)
@@ -145,6 +150,7 @@ public sealed class Position
         Bb[piece] &= b;
         ByColor[piece / 6] &= b;
         Board[sq] = -1;
+        if (Nnue.Loaded) Nnue.Remove(Acc, piece, sq);
     }
 
     void MovePiece(int from, int to)
@@ -152,6 +158,17 @@ public sealed class Position
         int piece = Board[from];
         RemovePiece(from);
         AddPiece(to, piece);
+    }
+
+    /// <summary>Recalcula els acumuladors NNUE des de zero (només els biaixos si <paramref name="clearOnly"/>).</summary>
+    public void RefreshAccumulator(bool clearOnly = false)
+    {
+        if (!Nnue.Loaded) return;
+        if (Acc.Length != 2 * Nnue.Hidden) Acc = new short[2 * Nnue.Hidden];
+        Nnue.Reset(Acc);
+        if (clearOnly) return;
+        for (int sq = 0; sq < 64; sq++)
+            if (Board[sq] != -1) Nnue.Add(Acc, Board[sq], sq);
     }
 
     public void SetFen(string fen)
@@ -162,6 +179,7 @@ public sealed class Position
         _ply = 0;
         _histCount = 0;
         Key = 0;
+        RefreshAccumulator(clearOnly: true);
 
         var parts = fen.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         int rank = 7, file = 0;

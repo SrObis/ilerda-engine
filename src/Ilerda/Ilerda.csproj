@@ -12,4 +12,8 @@
     <Optimize>true</Optimize>
   </PropertyGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="nets/ilerda-256.bin" LogicalName="Ilerda.net" />
+  </ItemGroup>
+
 </Project>
