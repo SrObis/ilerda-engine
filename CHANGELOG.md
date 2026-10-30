@@ -1,5 +1,16 @@
 # Canvis
 
+## 0.9.1 — Magic bitboards
+
+**Problema.** Els atacs de torres, alfils i dames es calculaven amb rajos casella a casella, i era una part notable del temps de cada node.
+
+**Canvi.**
+
+- `Attacks.Bishop`/`Rook` fan servir magic bitboards (`(occ & màscara) * màgic >> desplaçament` indexa una taula d'atacs). Els números màgics es busquen en arrencar amb una llavor fixa; el motor respon en uns 0,1 s.
+- La cerca no canvia: mateixos nodes que la 0.9.0 (4.485.351 a profunditat 12 des de la posició inicial), 26 OK a `ilerda test`.
+
+**Resultat.** Uns 4,2 M → 4,9 M nodes per segon (+18 %) a un fil. Contra la 0.9.0 (10+0,1, 100 partides): +33 =40 -27, +21 ± 53 Elo, LOS 78,1 %. És una optimització de velocitat pura, així que s'adopta sense exigir el LOS del 95 %, que amb 100 partides no es pot assolir.
+
 ## 0.9.0 — Cerca multifil (Lazy SMP)
 
 **Problema.** El motor només feia servir un nucli, i en tornejos de mòduls es compta amb tots els de la màquina.

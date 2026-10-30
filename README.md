@@ -2,11 +2,11 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda és el nom romà de Lleida).
 
-**Estat:** v0.9 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, poda null move, LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació amb taules de posició. Encara no té xarxa NNUE. Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.9.1 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, poda null move, LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació amb taules de posició. Encara no té xarxa NNUE. Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
-- Bitboards i generació de moviments pseudolegals amb comprovació de legalitat (enroc, captura al pas i promocions incloses).
+- Bitboards (atacs de peces lliscants amb magic bitboards) i generació de moviments pseudolegals amb comprovació de legalitat (enroc, captura al pas i promocions incloses).
 - Cerca negamax amb alfa-beta, aprofundiment iteratiu, cerca de quiescència, extensió per escac i ordenació MVV-LVA.
 - Claus Zobrist incrementals, taula de transposició (opció UCI `Hash`, 64 MB per defecte) i detecció de repeticions.
 - Ordenació de jugades tranquil·les amb killers (2 per nivell) i history.
@@ -114,7 +114,7 @@ Abans, a la v0.8.0 també es va provar posar els escacs primer a l'ordenació (`
 - [x] Avaluació amb taules de posició (PeSTO)
 - [x] Taula de transposició amb Zobrist, i detecció de repetició (v0.3: +230 Elo contra la v0.2 en partides ràpides)
 - [x] Cerca multifil Lazy SMP (`Threads=4`: +111 Elo contra 1 fil; vegeu [Multifil](#multifil-lazy-smp))
-- [ ] Magic bitboards (ara els atacs de peces lliscants es calculen amb rajos)
+- [x] Magic bitboards (v0.9.1: +18 % de nodes per segon amb els mateixos nodes; +21 ± 53 Elo contra la 0.9.0, 100 partides, LOS 78,1 %)
 - [x] Killers i history (v0.4: +49 ± 59 Elo contra la v0.3, SPRT sense conclusió en 100 partides; s'hi dona per bona perquè no perd i arriba més lluny)
 - [ ] Escacs primer a l'ordenació de jugades (provat i no adoptat: les jugades tranquil·les que donen escac directe es provaven després dels killers; contra la v0.7.0, 200 partides a 10+0,1, -9 ± 40 Elo, LOS 33 %, és a dir, indistingible del soroll)
 - [x] Null move (v0.5: +74 ± 60 Elo contra la v0.4, SPRT sense conclusió en 100 partides però LOS 99 %)
