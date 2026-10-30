@@ -1,5 +1,7 @@
 using Ilerda;
 
+Nnue.LoadEmbedded();
+
 // Ús:
 //   ilerda                       -> mode UCI (per a GUIs i torneigs)
 //   ilerda perft <depth> [fen]   -> comptador de nodes del generador de moviments

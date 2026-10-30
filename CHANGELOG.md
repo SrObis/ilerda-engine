@@ -1,5 +1,45 @@
 # Canvis
 
+## 0.10.0 — Avaluació NNUE
+
+**Problema.** L'avaluació eren les taules de posició PeSTO, escrites a mà i sense entendre res de la relació entre les peces.
+
+**Canvi.**
+
+- Nova avaluació NNUE (`Nnue.cs`): xarxa 768 → 256 (×2 perspectives) → 1 amb SCReLU. Les característiques són (peça, casella) vistes des de cada bàndol, així que els acumuladors s'actualitzen sumant i restant a cada peça afegida o treta (`AddPiece`/`RemovePiece`) i desfer una jugada els restaura sol. L'avaluació final és vectoritzada (`Vector<short>`).
+- La xarxa va **dins de l'executable** (`src/Ilerda/nets/ilerda-256.bin`, 395 KB, recurs incrustat) i es carrega en arrencar. Opció UCI `EvalFile`: buida = xarxa incrustada, `none` = tornar a PeSTO, o la ruta d'un altre fitxer `quantised.bin` de bullet.
+- Entrenada a Kaggle (GPU T4, bullet, 4,5 min) amb 50 M de posicions de `datagen` de la 0.6.1 (5.000 nodes, obertures aleatòries), deduplicades. Vegeu `tools/nnue/kaggle-bullet.md`.
+- Ordre `eval` per veure l'avaluació d'una posició.
+
+**Resultat.** Contra la 0.9.1 (10+0,1, 200 partides, un fil): +131 =31 -38, **+175 ± 49 Elo**, LOS 100 %. A 5+0,05 contra el mateix executable amb PeSTO: +135 =26 -39, +182 ± 51 Elo. La cerca va uns 1,7 cops més lenta que amb PeSTO (≈2,2 M contra ≈3,9 M nodes per segon), i tot i això guanya amb claredat.
+
+**Eines.** `tools/subset` (extreu un subconjunt de les dades al format de bullet), `tools/ajustar.ps1` amb `-Contra` (jugar contra una altra versió) i noms de registre vàlids.
+
+
+## 0.9.1 — Magic bitboards
+
+**Problema.** Els atacs de torres, alfils i dames es calculaven amb rajos casella a casella, i era una part notable del temps de cada node.
+
+**Canvi.**
+
+- `Attacks.Bishop`/`Rook` fan servir magic bitboards (`(occ & màscara) * màgic >> desplaçament` indexa una taula d'atacs). Els números màgics es busquen en arrencar amb una llavor fixa; el motor respon en uns 0,1 s.
+- La cerca no canvia: mateixos nodes que la 0.9.0 (4.485.351 a profunditat 12 des de la posició inicial), 26 OK a `ilerda test`.
+
+**Resultat.** Uns 4,2 M → 4,9 M nodes per segon (+18 %) a un fil. Contra la 0.9.0 (10+0,1, 100 partides): +33 =40 -27, +21 ± 53 Elo, LOS 78,1 %. És una optimització de velocitat pura, així que s'adopta sense exigir el LOS del 95 %, que amb 100 partides no es pot assolir.
+
+## 0.9.0 — Cerca multifil (Lazy SMP)
+
+**Problema.** El motor només feia servir un nucli, i en tornejos de mòduls es compta amb tots els de la màquina.
+
+**Canvi.**
+
+- Opció UCI `Threads` (1 per defecte): fils ajudants que cerquen la mateixa posició amb la taula de transposició compartida. El fil principal porta el temps i tria la jugada; els ajudants se salten alguns nivells d'aprofundiment per no repetir feina.
+- La taula de transposició és ara sense bloquejos: cada entrada són dues paraules de 64 bits (dades i `clau ^ dades`) i una entrada escrita a mitges es descarta com a no trobada.
+- Opcions `MoveOverhead` (0 ms per defecte) i `SoftTime` (100 = desactivat). El límit dur de temps no passa d'un terç del temps que queda.
+- UCI: el `stop` que arribava just després d'un `go` ja no es perd, i els valors no numèrics de `go` s'ignoren en lloc de fer caure el motor.
+
+**Resultat.** Amb 1 fil la cerca és idèntica a la 0.7.0 (mateixos nodes a profunditat 12) i contra ella fa +39 =29 -32, +24 ± 58 Elo (LOS 79,7 %, 10+0,1, 100 partides): soroll. `Threads=4` contra `Threads=1` (5+0,05, 200 partides): +102 =58 -40, +111 Elo. `SoftTime=60`: +5 Elo, soroll i no s'activa. Per a tornejos cal posar `Threads` al nombre de nuclis.
+
 ## 0.7.0 — Reverse futility i futility
 
 **Problema.** A poca profunditat la cerca encara explorava jugades en posicions ja decidides pel material o la posició.

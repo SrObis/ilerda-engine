@@ -18,7 +18,24 @@ public sealed class Searcher
     bool _stopped;
     int _rootBest;
 
-    readonly TranspositionTable _tt = new(64);
+    readonly TranspositionTable _tt;
+
+    // Lazy SMP: el fil principal (_master == this) porta el temps i tria la jugada; els ajudants
+    // cerquen la mateixa posició amb la taula de transposició compartida i s'aturen quan el principal acaba.
+    readonly Searcher _master;
+    readonly int _id;
+    readonly List<Searcher> _helpers = new();
+    int _threads = 1;
+    volatile bool _halt;
+
+    public Searcher() : this(new TranspositionTable(64), 0, null) { }
+
+    Searcher(TranspositionTable tt, int id, Searcher? master)
+    {
+        _tt = tt;
+        _id = id;
+        _master = master ?? this;
+    }
 
     // Ordenació de jugades tranquil·les: killers (2 per ply) i history [bàndol, des de, a].
     readonly int[,] _killers = new int[128, 2];
@@ -32,6 +49,7 @@ public sealed class Searcher
 
     int _rfpMargin = 90;  // marge de reverse futility per nivell de profunditat (1000 = pràcticament desactivada)
     int _futMargin = 110; // marge de futility per nivell de profunditat
+    int _softTime = 100;  // % del límit de temps passat el qual no s'inicia una iteració nova (100 = només el límit dur)
 
     static int[,] BuildLmrTable(double divisor)
     {
@@ -52,6 +70,7 @@ public sealed class Searcher
             case "lmrhist": _lmrHist = Math.Clamp(value, 100, 100000); return true;
             case "rfpmargin": _rfpMargin = Math.Clamp(value, 0, 1000); return true;
             case "futmargin": _futMargin = Math.Clamp(value, 0, 1000); return true;
+            case "softtime": _softTime = Math.Clamp(value, 10, 100); return true;
             default: return false;
         }
     }
@@ -66,10 +85,22 @@ public sealed class Searcher
     public long NodeLimit { get; set; }
 
     public void SetHash(int megabytes) => _tt.Resize(megabytes);
+    public void SetThreads(int n) => _threads = Math.Clamp(n, 1, 256);
+    public int Threads => _threads;
+
     public void NewGame()
     {
         _tt.Clear();
         Array.Clear(_history);
+        foreach (var h in _helpers) Array.Clear(h._history);
+    }
+
+    /// <summary>Nodes de tots els fils (per a la informació; el límit de nodes compta només el fil principal).</summary>
+    long TotalNodes()
+    {
+        long n = Volatile.Read(ref _nodes);
+        foreach (var h in _helpers) n += Volatile.Read(ref h._nodes);
+        return n;
     }
 
     void UpdateQuietHistory(int m, int ply, int depth)
@@ -88,21 +119,13 @@ public sealed class Searcher
 
     public int Think(Position pos, int maxDepth, long timeMs, Action<string>? info)
     {
-        _pos = pos;
-        _nodes = 0;
         _limitMs = timeMs;
-        _stopped = false;
-        Stop = false;
-        BestMove = 0;
-        LastScore = 0;
         _sw.Restart();
-        Array.Clear(_killers);
-        // La history es conserva entre jugades però s'envelleix perquè no domini la cerca nova.
-        for (int c = 0; c < 2; c++)
-            for (int f = 0; f < 64; f++)
-                for (int t = 0; t < 64; t++) _history[c, f, t] /= 2;
+        _halt = false;
 
         // Moviment de reserva: el primer legal.
+        BestMove = 0;
+        LastScore = 0;
         Span<int> rootMoves = stackalloc int[320];
         int count = MoveGen.Generate(pos, rootMoves);
         for (int i = 0; i < count; i++)
@@ -114,21 +137,64 @@ public sealed class Searcher
         }
         if (BestMove == 0) return 0;
 
+        // Fils ajudants (reutilitzats entre cerques perquè conservin la history).
+        while (_helpers.Count < _threads - 1) _helpers.Add(new Searcher(_tt, _helpers.Count + 1, this));
+        var threads = new List<Thread>();
+        for (int i = 0; i < _threads - 1; i++)
+        {
+            var h = _helpers[i];
+            var hp = pos.Clone();
+            var th = new Thread(() => h.Iterate(hp, maxDepth, null), 16 * 1024 * 1024);
+            th.Start();
+            threads.Add(th);
+        }
+
+        Iterate(pos, maxDepth, info);
+
+        _halt = true;
+        foreach (var th in threads) th.Join();
+        _halt = false;
+        return BestMove;
+    }
+
+    /// <summary>Aprofundiment iteratiu d'un fil. El principal (id 0) informa i fixa BestMove; els ajudants només omplen la taula.</summary>
+    void Iterate(Position pos, int maxDepth, Action<string>? info)
+    {
+        _pos = pos;
+        _nodes = 0;
+        _stopped = false;
+        Array.Clear(_killers);
+        // La history es conserva entre jugades però s'envelleix perquè no domini la cerca nova.
+        for (int c = 0; c < 2; c++)
+            for (int f = 0; f < 64; f++)
+                for (int t = 0; t < 64; t++) _history[c, f, t] /= 2;
+
         for (int depth = 1; depth <= maxDepth; depth++)
         {
+            // Els ajudants se salten alguns nivells perquè no repeteixin tots la mateixa feina.
+            if (_id > 0 && depth > 1 && (depth + _id) % 3 == 0) continue;
+
             int score = Negamax(depth, -Inf, Inf, 0);
             if (_stopped) break;
+            if (_id > 0)
+            {
+                if (Math.Abs(score) > Mate - 100) break;
+                continue;
+            }
 
             BestMove = _rootBest;
             LastScore = score;
             long ms = _sw.ElapsedMilliseconds;
-            long nps = ms > 0 ? _nodes * 1000 / ms : _nodes;
-            info?.Invoke($"info depth {depth} score {FormatScore(score)} nodes {_nodes} time {ms} nps {nps} pv {MoveGen.ToUci(BestMove)}");
+            long total = TotalNodes();
+            long nps = ms > 0 ? total * 1000 / ms : total;
+            info?.Invoke($"info depth {depth} score {FormatScore(score)} nodes {total} time {ms} nps {nps} pv {MoveGen.ToUci(BestMove)}");
 
             if (Math.Abs(score) > Mate - 100) break;
             if (NodeLimit > 0 && _nodes >= NodeLimit) break;
+            // Temps tou: una iteració nova costa uns 2-3 cops l'anterior, així que si ja s'ha gastat
+            // més de la fracció SoftTime del límit no s'arriba a acabar i només es malgasta el temps.
+            if (_limitMs > 0 && ms * 100 >= _limitMs * _softTime) break;
         }
-        return BestMove;
     }
 
     static string FormatScore(int score)
@@ -143,9 +209,13 @@ public sealed class Searcher
 
     bool CheckStop()
     {
-        if ((_nodes & 2047) == 0 && (Stop || (_limitMs > 0 && _sw.ElapsedMilliseconds >= _limitMs)
-                                     || (NodeLimit > 0 && _nodes >= NodeLimit * 8)))
-            _stopped = true;
+        if ((_nodes & 2047) == 0)
+        {
+            if (_id > 0) { if (_master.Stop || _master._halt) _stopped = true; }
+            else if (Stop || (_limitMs > 0 && _sw.ElapsedMilliseconds >= _limitMs)
+                     || (NodeLimit > 0 && _nodes >= NodeLimit * 8))
+                _stopped = true;
+        }
         return _stopped;
     }
 
