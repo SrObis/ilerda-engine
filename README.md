@@ -2,7 +2,7 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda és el nom romà de Lleida).
 
-**Estat:** v0.9.1 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, poda null move, LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació amb taules de posició. Encara no té xarxa NNUE. Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.10.0 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, poda null move, LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa). Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
@@ -15,7 +15,7 @@ Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda
 - Reverse futility (profunditat ≤ 6) i futility (≤ 4), amb marges configurables (`RfpMargin`, `FutMargin`).
 - Cerca multifil amb Lazy SMP (opció UCI `Threads`, 1 per defecte): els fils ajudants cerquen la mateixa posició amb una taula de transposició compartida sense bloquejos i el fil principal tria la jugada. Vegeu [Multifil](#multifil-lazy-smp).
 - Control de temps (`wtime`, `btime`, `winc`, `binc`, `movestogo`, `movetime`, `depth`, `infinite`), amb opció `MoveOverhead` (0 ms per defecte) i un límit del terç del temps que queda.
-- Avaluació *tapered* amb taules de posició PeSTO (mig joc i final, barrejats segons la fase de la partida).
+- Avaluació NNUE (xarxa 768 → 256 → 1 amb SCReLU, acumuladors incrementals i xarxa incrustada; opció `EvalFile`) i, com a alternativa (`EvalFile none`), l'avaluació *tapered* amb taules PeSTO.
 - Comandes extra: `perft N`, `divide N` i `d` (mostra el tauler).
 - `ilerda datagen <partides> <nodes> <fitxer> [fils] [llavor] [llibre.epd]`: autojoc amb límit de nodes per generar dades d'entrenament (`FEN | puntuació | resultat`). Amb 0 partides no s'atura. Els fitxers van a `data/` (no es puja a GitHub).
 
@@ -96,6 +96,21 @@ Comprovació a un fil contra la 0.7.0 (10+0,1, 100 partides): amb `MoveOverhead`
 
 Els 4 fils guanyen molt clar. `SoftTime=60` queda dins del soroll i es deixa desactivat. Per defecte el motor continua amb 1 fil, així que la força per defecte no canvia; per a tornejos cal posar `Threads` al nombre de nuclis disponibles.
 
+## NNUE
+
+L'avaluació és una xarxa **768 → 256 (×2 perspectives) → 1** amb activació SCReLU, entrenada amb [bullet](https://github.com/jw1912/bullet) i incrustada a l'executable (`src/Ilerda/nets/ilerda-256.bin`). Opció UCI `EvalFile`: buida = xarxa incrustada, `none` = avaluació PeSTO, o la ruta d'un altre `quantised.bin` de bullet.
+
+- **Característiques:** (peça, casella) des de cada bàndol, peces pròpies al bloc 0 i del rival al 384, casella girada en vertical per a les negres. No depenen del rei, així que els acumuladors s'actualitzen sumant i restant una fila de pesos per cada peça afegida o treta.
+- **Entrenament:** 49,9 M de posicions de `datagen` (motor 0.6.1, 5.000 nodes, obertures aleatòries), deduplicades i barrejades; 20 superbatches (≈40 èpoques) a una T4 de Kaggle en 4,5 minuts. Procediment complet i format del fitxer a [tools/nnue/kaggle-bullet.md](tools/nnue/kaggle-bullet.md); el subconjunt es treu amb `tools/subset`.
+- **Velocitat:** uns 2,2 M de nodes per segon a un fil, contra uns 3,9 M amb PeSTO. Un primer producte final escalar anava a 1,0 M i quedava −40 ± 44 Elo contra PeSTO; vectoritzat va a +182 ± 51.
+
+| Matx | Partides | Resultat | Elo |
+|---|---|---|---|
+| NNUE contra PeSTO (mateix executable), 5+0,05 | 200 | +135 =26 -39 | +182 ± 51 |
+| **v0.10.0 contra v0.9.1**, 10+0,1 | 200 | +131 =31 -38 | **+175 ± 49**, LOS 100 % |
+
+Les etiquetes venen d'un motor d'aproximadament 2400–2500 Elo i d'obertures aleatòries, i això limita la primera xarxa. El següent salt ha de venir de tornar a generar dades jugant amb aquesta xarxa (pas 4 del pla).
+
 ## SEE (provat i no adoptat)
 
 El *Static Exchange Evaluation* simula les recaptures a la casella d'una captura per saber si perd material. Es va provar com a v0.8.0 a la branca `feature/see` (opcions UCI `See` i `SeeMargin`), contra la v0.7.0 a 10+0,1:
@@ -123,7 +138,7 @@ Abans, a la v0.8.0 també es va provar posar els escacs primer a l'ordenació (`
 - [ ] SEE (provat i no adoptat; vegeu [SEE](#see-provat-i-no-adoptat))
 - [x] Comanda `datagen` per generar dades d'autojoc
 - [x] Proves automàtiques amb cutechess-cli i SPRT
-- [ ] Avaluació NNUE entrenada amb dades d'autojoc
+- [x] Avaluació NNUE entrenada amb dades d'autojoc (v0.10.0: +175 ± 49 Elo contra la 0.9.1; vegeu [NNUE](#nnue))
 - [ ] Enviar a CCRL i CEGT, i després a les divisions baixes del TCEC
 
 ## Llicència

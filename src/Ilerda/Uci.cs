@@ -3,7 +3,7 @@ namespace Ilerda;
 public static class Uci
 {
     public const string Name = "Ilerda";
-    public const string Version = "0.9.1";
+    public const string Version = "0.10.0";
     public const string Author = "Jordi Obis";
 
     static readonly object OutLock = new();
@@ -54,10 +54,22 @@ public static class Uci
                     Send("option name RfpMargin type spin default 90 min 0 max 1000");
                     Send("option name FutMargin type spin default 110 min 0 max 1000");
                     Send("option name SoftTime type spin default 100 min 10 max 100");
+                    Send("option name EvalFile type string default <empty>");
                     Send("uciok");
                     break;
 
                 case "setoption":
+                    // setoption name EvalFile value <ruta> (buit = avaluació PeSTO)
+                    if (t.Length >= 3 && t[1] == "name" && t[2].Equals("EvalFile", StringComparison.OrdinalIgnoreCase))
+                    {
+                        StopSearch();
+                        string file = t.Length > 4 && t[3] == "value" ? string.Join(' ', t[4..]) : "";
+                        if (file.Length == 0 || file == "<empty>") Nnue.LoadEmbedded();
+                        else if (file.Equals("none", StringComparison.OrdinalIgnoreCase) || file.Equals("pesto", StringComparison.OrdinalIgnoreCase)) Nnue.Unload();
+                        else if (!Nnue.Load(file, out string err)) Send($"info string no es pot carregar la xarxa: {err}");
+                        pos.RefreshAccumulator();
+                        break;
+                    }
                     // setoption name Hash value <mb>
                     if (t.Length >= 5 && t[1] == "name" && t[3] == "value" && int.TryParse(t[4], out int ov))
                     {
@@ -105,6 +117,10 @@ public static class Uci
 
                 case "d":
                     Send(pos.ToString());
+                    break;
+
+                case "eval":
+                    Send($"eval {Eval.Evaluate(pos)} cp (bàndol que juga){(Nnue.Loaded ? " [NNUE]" : " [PeSTO]")}");
                     break;
 
                 case "quit":

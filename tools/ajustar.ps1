@@ -13,6 +13,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$Versio,
     [Parameter(Mandatory = $true)][string[]]$Variants,
+    [string]$Contra,               # versio contra la qual jugar (per defecte, el mateix executable amb la configuracio per defecte)
     [string]$CutechessCli = "C:\Program Files (x86)\Cute Chess\cutechess-cli.exe",
     [string]$Tc = "5+0.05",
     [int]$Rounds = 100,            # cada ronda son 2 partides (colors canviats)
@@ -22,7 +23,8 @@ param(
 $root = Split-Path -Parent $PSScriptRoot
 $openings = Join-Path $root "tools\openings.pgn"
 $motor = if (Test-Path $Versio) { $Versio } else { Join-Path $root "Versions\Ilerda-$Versio\Ilerda.exe" }
-foreach ($f in @($motor, $CutechessCli, $openings)) {
+$base = if (-not $Contra) { $motor } elseif (Test-Path $Contra) { $Contra } else { Join-Path $root "Versions\Ilerda-$Contra\Ilerda.exe" }
+foreach ($f in @($motor, $base, $CutechessCli, $openings)) {
     if (-not (Test-Path $f)) { Write-Error "No trobo: $f"; exit 1 }
 }
 
@@ -31,11 +33,11 @@ foreach ($v in $Variants) {
     Write-Host "== $v contra la configuracio per defecte =="
     $out = & $CutechessCli `
         -engine name=Variant cmd="$motor" proto=uci option.$nom=$valor `
-        -engine name=Base cmd="$motor" proto=uci `
+        -engine name=Base cmd="$base" proto=uci `
         -each tc=$Tc `
         -openings file="$openings" format=pgn order=random plies=8 `
         -games 2 -rounds $Rounds -repeat -recover `
-        -concurrency $Concurrency 2>&1 | Tee-Object -FilePath (Join-Path $env:TEMP "ajustar-$nom-$valor.log")
+        -concurrency $Concurrency 2>&1 | Tee-Object -FilePath (Join-Path $env:TEMP ("ajustar-$nom-" + ($valor -replace "[^A-Za-z0-9.-]", "_") + ".log"))
 
     $linia = $out | Select-String "Score of Variant vs Base: (\d+) - (\d+) - (\d+)" | Select-Object -Last 1
     if (-not $linia) { Write-Warning "Sense resultat per a $v"; continue }
