@@ -51,6 +51,7 @@ public static class BookGen
                 var pos = new Position();
                 Span<int> moves = stackalloc int[320];
                 Span<int> ok = stackalloc int[320];
+                Span<int> sc = stackalloc int[320]; // fora dels bucles: un stackalloc dins d'un bucle no s'allibera fins a sortir del mètode
                 while (Volatile.Read(ref quit) == 0 && Volatile.Read(ref written) < lines)
                 {
                     Interlocked.Increment(ref tried);
@@ -67,7 +68,6 @@ public static class BookGen
 
                         // El motor valora cada jugada candidata amb una cerca curta (puntuació pel bàndol que mou) i
                         // només se'n tria una d'entre les que queden a menys de PickWindow cp de la millor.
-                        Span<int> sc = stackalloc int[320];
                         int top = int.MinValue;
                         s.NodeLimit = StepNodes;
                         for (int k = 0; k < legal; k++)
