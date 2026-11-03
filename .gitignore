@@ -15,3 +15,6 @@ tools/resultat.pgn
 
 # Dades d'autojoc (datagen)
 data/
+
+# Stockfish per calibrar (binari gran, es baixa a part)
+tools/stockfish/

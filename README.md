@@ -2,7 +2,7 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda és el nom romà de Lleida).
 
-**Estat:** v0.10.0 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, poda null move, LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa). Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.11.0 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, poda null move, LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa). Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
@@ -102,7 +102,7 @@ Els 4 fils guanyen molt clar. `SoftTime=60` queda dins del soroll i es deixa des
 L'avaluació és una xarxa **768 → 256 (×2 perspectives) → 1** amb activació SCReLU, entrenada amb [bullet](https://github.com/jw1912/bullet) i incrustada a l'executable (`src/Ilerda/nets/ilerda-256.bin`). Opció UCI `EvalFile`: buida = xarxa incrustada, `none` = avaluació PeSTO, o la ruta d'un altre `quantised.bin` de bullet.
 
 - **Característiques:** (peça, casella) des de cada bàndol, peces pròpies al bloc 0 i del rival al 384, casella girada en vertical per a les negres. No depenen del rei, així que els acumuladors s'actualitzen sumant i restant una fila de pesos per cada peça afegida o treta.
-- **Entrenament:** 49,9 M de posicions de `datagen` (motor 0.6.1, 5.000 nodes, obertures aleatòries), deduplicades i barrejades; 20 superbatches (≈40 èpoques) a una T4 de Kaggle en 4,5 minuts. Procediment complet i format del fitxer a [tools/nnue/kaggle-bullet.md](tools/nnue/kaggle-bullet.md); el subconjunt es treu amb `tools/subset`.
+- **Entrenament:** 49,9 M de posicions de `datagen` (motor 0.6.1, 5.000 nodes, obertures aleatòries) més 22 M de noves (v0.10.0, 8.000 nodes, llibre propi; vegeu més avall), deduplicades i barrejades; 20 superbatches (≈40 èpoques) a una T4 de Kaggle en 4,5 minuts. Procediment complet i format del fitxer a [tools/nnue/kaggle-bullet.md](tools/nnue/kaggle-bullet.md); el subconjunt es treu amb `tools/subset`.
 - **Velocitat:** uns 2,2 M de nodes per segon a un fil, contra uns 3,9 M amb PeSTO. Un primer producte final escalar anava a 1,0 M i quedava −40 ± 44 Elo contra PeSTO; vectoritzat va a +182 ± 51.
 
 | Matx | Partides | Resultat | Elo |
@@ -110,7 +110,22 @@ L'avaluació és una xarxa **768 → 256 (×2 perspectives) → 1** amb activaci
 | NNUE contra PeSTO (mateix executable), 5+0,05 | 200 | +135 =26 -39 | +182 ± 51 |
 | **v0.10.0 contra v0.9.1**, 10+0,1 | 200 | +131 =31 -38 | **+175 ± 49**, LOS 100 % |
 
-Les etiquetes venen d'un motor d'aproximadament 2400–2500 Elo i d'obertures aleatòries, i això limita la primera xarxa. El següent salt ha de venir de tornar a generar dades jugant amb aquesta xarxa (pas 4 del pla).
+Les etiquetes venen d'un motor d'aproximadament 2400–2500 Elo i d'obertures aleatòries, i això limita la primera xarxa. El següent salt havia de venir de tornar a generar dades jugant amb aquesta xarxa (v0.11.0, a continuació).
+
+### v0.11.0: dades noves barrejades amb les velles
+
+- **Dades noves:** `ilerda datagen` amb la v0.10.0 (8.000 nodes) i el llibre propi `llibre.epd` (28.969 posicions): 500.000 partides en 4 tandes. Amb `tools/merge_shuffle.py` s'ajunten, es dedupliquen per les 4 primeres parts del FEN i es barregen: queden 22,0 M de posicions úniques (el 41 % eren duplicades, perquè el llibre és petit).
+- **Les dades noves soles empitjoren la xarxa** (uns −140 Elo contra la 0.10.0, amb 20 i amb 8 superbatches). Falta diversitat: venen de poques obertures. Un control amb només les dades velles va donar +9, així que el procediment d'entrenament és correcte.
+- **Barrejades amb les velles (≈72 M de posicions) sí que milloren**: la xarxa `mix` guanya uns +171 Elo contra la 0.10.0 (marge d'uns ±40). `tools/nnue/ilerda-train.ipynb` és el notebook de Kaggle.
+- **Validació independent contra Stockfish** (`tools/comparar-sf.ps1`, `UCI_LimitStrength`, 10+0,1, 200 partides per cel·la, mateixes obertures). L'Elo de Stockfish només és una referència aproximada; compta la diferència entre les dues xarxes:
+
+| Stockfish (`UCI_Elo`) | Xarxa 0.10.0 | Xarxa nova |
+|---|---|---|
+| 2200 | 81,8 % | 88,2 % |
+| 2600 | 51,0 % | **70,0 %** (+140 Elo) |
+| 3000 | 12,0 % | 17,0 % |
+
+Com que la xarxa nova s'ha entrenat amb etiquetes de la 0.10.0 i s'ha provat contra ella, hi podria haver una mica d'inflació per autojoc; la prova contra Stockfish l'evita i confirma la millora.
 
 ## SEE (provat i no adoptat)
 
