@@ -22,6 +22,18 @@ if (args.Length >= 4 && args[0] == "datagen")
     return 0;
 }
 
+//   ilerda book <línies> <fitxer> [fils] [llavor] [nodes] [marge]  -> llibre d'obertures EPD filtrat pel motor
+if (args.Length >= 3 && args[0] == "book")
+{
+    BookGen.Run(
+        long.Parse(args[1]), args[2],
+        args.Length > 3 ? int.Parse(args[3]) : 2,
+        args.Length > 4 ? int.Parse(args[4]) : Environment.TickCount,
+        args.Length > 5 ? long.Parse(args[5]) : 20000,
+        args.Length > 6 ? int.Parse(args[6]) : 50);
+    return 0;
+}
+
 if (args.Length >= 2 && args[0] == "perft")
 {
     var pos = new Position();

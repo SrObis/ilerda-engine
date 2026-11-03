@@ -1,5 +1,19 @@
 # Canvis
 
+## 0.11.0 — Xarxa NNUE reentrenada amb dades noves
+
+**Problema.** La xarxa de la 0.10.0 s'havia entrenat amb etiquetes d'un motor de la 0.6.1 i obertures aleatòries.
+
+**Canvi.**
+
+- Nova xarxa incrustada (`ilerda-256.bin`, mateixa arquitectura 768 → 256 → 1), entrenada a Kaggle amb les 50 M de posicions velles més 22 M de noves: `datagen` amb la 0.10.0 (8.000 nodes) i el llibre propi `llibre.epd`, ajuntades, deduplicades i barrejades amb `tools/merge_shuffle.py`.
+- Les dades noves soles empitjoren la xarxa (uns −140 Elo): falta diversitat. Només barrejades amb les velles milloren.
+
+**Resultat.** Contra la 0.10.0: uns +171 Elo. Contra Stockfish limitat (10+0,1, 200 partides per cel·la), la xarxa nova puntua 88,2 % (vella 81,8 %) a `UCI_Elo` 2200, 70,0 % (vella 51,0 %) a 2600 i 17,0 % (vella 12,0 %) a 3000.
+
+**Eines.** `tools/comparar-sf.ps1` (dues xarxes contra Stockfish), `tools/merge_shuffle.py` i `tools/nnue/ilerda-train.ipynb` (notebook de Kaggle).
+
+
 ## 0.10.0 — Avaluació NNUE
 
 **Problema.** L'avaluació eren les taules de posició PeSTO, escrites a mà i sense entendre res de la relació entre les peces.

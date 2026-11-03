@@ -2,7 +2,7 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda és el nom romà de Lleida).
 
-**Estat:** v0.10.0 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, poda null move, LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa). Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.11.0 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, poda null move, LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa). Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
@@ -17,6 +17,7 @@ Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda
 - Control de temps (`wtime`, `btime`, `winc`, `binc`, `movestogo`, `movetime`, `depth`, `infinite`), amb opció `MoveOverhead` (0 ms per defecte) i un límit del terç del temps que queda.
 - Avaluació NNUE (xarxa 768 → 256 → 1 amb SCReLU, acumuladors incrementals i xarxa incrustada; opció `EvalFile`) i, com a alternativa (`EvalFile none`), l'avaluació *tapered* amb taules PeSTO.
 - Comandes extra: `perft N`, `divide N` i `d` (mostra el tauler).
+- `ilerda book <línies> <fitxer> [fils] [llavor] [nodes] [marge]`: crea un llibre d'obertures EPD equilibrades per a `datagen`. Vegeu [Llibre d'obertures propi](#llibre-dobertures-propi-ilerda-book).
 - `ilerda datagen <partides> <nodes> <fitxer> [fils] [llavor] [llibre.epd]`: autojoc amb límit de nodes per generar dades d'entrenament (`FEN | puntuació | resultat`). Amb 0 partides no s'atura. Els fitxers van a `data/` (no es puja a GitHub).
 
 ## Compilar i provar
@@ -101,7 +102,7 @@ Els 4 fils guanyen molt clar. `SoftTime=60` queda dins del soroll i es deixa des
 L'avaluació és una xarxa **768 → 256 (×2 perspectives) → 1** amb activació SCReLU, entrenada amb [bullet](https://github.com/jw1912/bullet) i incrustada a l'executable (`src/Ilerda/nets/ilerda-256.bin`). Opció UCI `EvalFile`: buida = xarxa incrustada, `none` = avaluació PeSTO, o la ruta d'un altre `quantised.bin` de bullet.
 
 - **Característiques:** (peça, casella) des de cada bàndol, peces pròpies al bloc 0 i del rival al 384, casella girada en vertical per a les negres. No depenen del rei, així que els acumuladors s'actualitzen sumant i restant una fila de pesos per cada peça afegida o treta.
-- **Entrenament:** 49,9 M de posicions de `datagen` (motor 0.6.1, 5.000 nodes, obertures aleatòries), deduplicades i barrejades; 20 superbatches (≈40 èpoques) a una T4 de Kaggle en 4,5 minuts. Procediment complet i format del fitxer a [tools/nnue/kaggle-bullet.md](tools/nnue/kaggle-bullet.md); el subconjunt es treu amb `tools/subset`.
+- **Entrenament:** 49,9 M de posicions de `datagen` (motor 0.6.1, 5.000 nodes, obertures aleatòries) més 22 M de noves (v0.10.0, 8.000 nodes, llibre propi; vegeu més avall), deduplicades i barrejades; 20 superbatches (≈40 èpoques) a una T4 de Kaggle en 4,5 minuts. Procediment complet i format del fitxer a [tools/nnue/kaggle-bullet.md](tools/nnue/kaggle-bullet.md); el subconjunt es treu amb `tools/subset`.
 - **Velocitat:** uns 2,2 M de nodes per segon a un fil, contra uns 3,9 M amb PeSTO. Un primer producte final escalar anava a 1,0 M i quedava −40 ± 44 Elo contra PeSTO; vectoritzat va a +182 ± 51.
 
 | Matx | Partides | Resultat | Elo |
@@ -109,7 +110,22 @@ L'avaluació és una xarxa **768 → 256 (×2 perspectives) → 1** amb activaci
 | NNUE contra PeSTO (mateix executable), 5+0,05 | 200 | +135 =26 -39 | +182 ± 51 |
 | **v0.10.0 contra v0.9.1**, 10+0,1 | 200 | +131 =31 -38 | **+175 ± 49**, LOS 100 % |
 
-Les etiquetes venen d'un motor d'aproximadament 2400–2500 Elo i d'obertures aleatòries, i això limita la primera xarxa. El següent salt ha de venir de tornar a generar dades jugant amb aquesta xarxa (pas 4 del pla).
+Les etiquetes venen d'un motor d'aproximadament 2400–2500 Elo i d'obertures aleatòries, i això limita la primera xarxa. El següent salt havia de venir de tornar a generar dades jugant amb aquesta xarxa (v0.11.0, a continuació).
+
+### v0.11.0: dades noves barrejades amb les velles
+
+- **Dades noves:** `ilerda datagen` amb la v0.10.0 (8.000 nodes) i el llibre propi `llibre.epd` (28.969 posicions): 500.000 partides en 4 tandes. Amb `tools/merge_shuffle.py` s'ajunten, es dedupliquen per les 4 primeres parts del FEN i es barregen: queden 22,0 M de posicions úniques (el 41 % eren duplicades, perquè el llibre és petit).
+- **Les dades noves soles empitjoren la xarxa** (uns −140 Elo contra la 0.10.0, amb 20 i amb 8 superbatches). Falta diversitat: venen de poques obertures. Un control amb només les dades velles va donar +9, així que el procediment d'entrenament és correcte.
+- **Barrejades amb les velles (≈72 M de posicions) sí que milloren**: la xarxa `mix` guanya uns +171 Elo contra la 0.10.0 (marge d'uns ±40). `tools/nnue/ilerda-train.ipynb` és el notebook de Kaggle.
+- **Validació independent contra Stockfish** (`tools/comparar-sf.ps1`, `UCI_LimitStrength`, 10+0,1, 200 partides per cel·la, mateixes obertures). L'Elo de Stockfish només és una referència aproximada; compta la diferència entre les dues xarxes:
+
+| Stockfish (`UCI_Elo`) | Xarxa 0.10.0 | Xarxa nova |
+|---|---|---|
+| 2200 | 81,8 % | 88,2 % |
+| 2600 | 51,0 % | **70,0 %** (+140 Elo) |
+| 3000 | 12,0 % | 17,0 % |
+
+Com que la xarxa nova s'ha entrenat amb etiquetes de la 0.10.0 i s'ha provat contra ella, hi podria haver una mica d'inflació per autojoc; la prova contra Stockfish l'evita i confirma la millora.
 
 ## SEE (provat i no adoptat)
 
@@ -123,6 +139,19 @@ El *Static Exchange Evaluation* simula les recaptures a la casella d'una captura
 Variants contra el SEE complet (200 partides a 5+0,05, marge d'uns ±40 Elo): sense SEE -33, només ordenació -10, només quiescència +21 i quiescència amb marge de 100 cp +10. Tot queda dins del soroll i el +21 no es va confirmar. Cap versió arriba al LOS del 95 % que es demana per adoptar un canvi, així que no es fusiona. El codi es conserva a `feature/see`.
 
 Abans, a la v0.8.0 també es va provar posar els escacs primer a l'ordenació (`prova/escacs-primer`, -9 ± 40 Elo, LOS 33 %), amb el mateix resultat.
+
+## Llibre d'obertures propi (`ilerda book`)
+
+`ilerda book <línies> <fitxer> [fils] [llavor] [nodes] [marge]` crea un llibre EPD per passar-lo a `datagen`. Per què no n'hi ha prou amb obertures aleatòries ni amb descarregar un llibre:
+
+- **Les obertures de `datagen` eren 8–9 semijugades a l'atzar**, amb un únic filtre (±400 cp). Surten estructures absurdes (1.h4, 1.a4, Ta3, Ch3...) i el resultat final de la partida depèn més de l'error de l'obertura que de la qualitat del joc, que és el que Texel i la NNUE han d'aprendre.
+- **Un llibre equilibrat dona dades més representatives:** posicions que s'assemblen a les de partides reals, menys duplicats i un resultat final menys sorollós. Per a Texel (uns 780 paràmetres) el guany és petit; per a la NNUE (molts més) la diversitat pesa més.
+- **Un llibre propi evita dependre de descàrregues** (`8moves_v3`) i es pot regenerar amb una llavor o uns marges diferents.
+- **Filtrar jugades a l'atzar no va bastar.** La primera idea era prohibir els peons de les columnes a, b, g, h, però és una regla fixa. Un filtre d'avaluació (descartar la línia si el motor la valora fora de ±30 cp després de les primeres jugades) tampoc: l'avaluació PeSTO no castiga 1.a4 ni Ta3, i descartava el 98 % dels intents sense treure les jugades estranyes. El mètode final és triar, a cada semijugada, **només entre les jugades que el motor valora a menys de 40 cp de la millor** (cerca de 1.500 nodes per candidata). Així cap jugada és absurda segons el motor.
+- **Regla afegida:** a les 6 primeres semijugades no es mouen peons de les columnes a, b, g, h, ni cavalls a la vora, ni torres. L'avaluació sola no les veu com a dolentes.
+- **Filtres finals:** la posició d'inici és dins de ±30 cp a les dues primeres semijugades i dins del marge (50 cp per defecte, cerca de 20.000 nodes) a la resta, sense escac, sense captura com a millor jugada i sense duplicats (clau Zobrist).
+
+És més lent que el llibre aleatori (uns 10 % dels intents s'accepten). El llibre barrejat amb obertures aleatòries és una opció per a la NNUE: `datagen` accepta el llibre i fa 0–2 semijugades aleatòries després.
 
 ## Full de ruta
 
