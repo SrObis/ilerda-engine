@@ -305,6 +305,21 @@ public sealed class Position
     }
 
     /// <summary>True si el bàndol té alguna peça que no sigui peó ni rei (evita null move en zugzwang).</summary>
+    /// <summary>
+    /// Material insuficient per fer mat: només reis, un sol cavall o alfil, o només alfils
+    /// de totes dues bandes a caselles del mateix color.
+    /// </summary>
+    public bool InsufficientMaterial()
+    {
+        const ulong Light = 0x55AA55AA55AA55AAUL;
+        ulong heavy = Bb[Pc.Pawn] | Bb[Pc.Rook] | Bb[Pc.Queen] | Bb[6 + Pc.Pawn] | Bb[6 + Pc.Rook] | Bb[6 + Pc.Queen];
+        if (heavy != 0) return false;
+        ulong knights = Bb[Pc.Knight] | Bb[6 + Pc.Knight];
+        ulong bishops = Bb[Pc.Bishop] | Bb[6 + Pc.Bishop];
+        if (knights == 0) return (bishops & Light) == 0 || (bishops & ~Light) == 0;
+        return bishops == 0 && (knights & (knights - 1)) == 0;
+    }
+
     public bool HasNonPawnMaterial(int color) =>
         (Bb[color * 6 + Pc.Knight] | Bb[color * 6 + Pc.Bishop] | Bb[color * 6 + Pc.Rook] | Bb[color * 6 + Pc.Queen]) != 0;
 
