@@ -1,5 +1,17 @@
 # Canvis
 
+## 0.13.1 — Taules per material insuficient
+
+**Problema.** Revisant 5.000 partides d'autojoc, 455 de les 2.139 taules acabaven per material insuficient, i en 347 d'aquestes un dels dos motors havia vist +3 peons o més. La xarxa dona puntuacions altes a finals que són taules teòriques: rei i alfil contra rei donava +269 cp a profunditat 8.
+
+**Canvi.**
+
+- Nova `Position.InsufficientMaterial()`: només reis, un sol cavall o alfil, o només alfils de totes dues bandes a caselles del mateix color.
+- La cerca (`Negamax`, fora de l'arrel) i la quiescència hi retornen 0. Ara rei i alfil contra rei puntua 0.
+- `bench 12` (un fil): 8.996.114 nodes (abans 8.990.810).
+
+**Resultat.** Contra la 0.13.0 (5+0,05, 6 simultànies): +785 =1088 -783 en 2.656 partides, **+0,3 ± 10,2 Elo**. Estava previst: és una correcció d'una avaluació falsa, no una millora de força contra la versió anterior. El match es va aturar a 2.656 de les 5.000 previstes; el marge és suficient per descartar una regressió.
+
 ## 0.13.0 — Malus de history amb gravity
 
 **Problema.** La history només tenia bonus (`depth²`) amb un topall lineal: les jugades tranquil·les que es provaven abans de la que talla no en sortien penalitzades.

@@ -253,7 +253,7 @@ public sealed class Searcher
         if (CheckStop()) return 0;
         _nodes++;
 
-        if (ply > 0 && (_pos.Halfmove >= 100 || _pos.IsRepetition())) return 0;
+        if (ply > 0 && (_pos.Halfmove >= 100 || _pos.IsRepetition() || _pos.InsufficientMaterial())) return 0;
 
         bool inCheck = _pos.InCheck();
         if (inCheck && ply < 60) depth++;
@@ -380,6 +380,7 @@ public sealed class Searcher
         if (CheckStop()) return 0;
         _nodes++;
 
+        if (_pos.InsufficientMaterial()) return 0;
         int stand = Eval.Evaluate(_pos);
         if (stand >= beta) return beta;
         if (stand > alpha) alpha = stand;
