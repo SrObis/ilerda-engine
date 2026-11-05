@@ -127,6 +127,29 @@ Les etiquetes venen d'un motor d'aproximadament 2400–2500 Elo i d'obertures al
 
 Com que la xarxa nova s'ha entrenat amb etiquetes de la 0.10.0 i s'ha provat contra ella, hi podria haver una mica d'inflació per autojoc; la prova contra Stockfish l'evita i confirma la millora.
 
+### Intent de reentrenament amb més dades (no adoptat)
+
+Després de la 0.11.0 es va provar de pujar el sostre amb més dades i una xarxa més gran. No es va adoptar cap xarxa: la 0.11.0 continua sent la millor.
+
+- **Llibre gran:** `ilerda book` amb 120.000 línies (llavor 4242, marge 60, 20.000 nodes), més les 28.969 velles: 144.862 posicions.
+- **Dades noves:** `ilerda datagen` amb la 0.11.0 (8.000 nodes), 2–4 semijugades aleatòries després del llibre: 500.000 partides (≈15 M de posicions). Barrejades amb les velles i deduplicades queden **109,2 M de posicions úniques**.
+- **Entrenament:** 256 i 512 neurones ocultes, 20 superbatches a una T4 de Kaggle (`tools/nnue/ilerda-train.ipynb`, paràmetre `HIDDEN`). Pèrdua final: 0,0554 (256) i 0,0539 (512).
+
+Resultats contra la 0.11.0 (cutechess-cli, mateixes obertures):
+
+| Xarxa | Control | Partides | Resultat | Elo |
+|---|---|---|---|---|
+| 256 | 10+0,1 | 200 | +82 =54 -64 | +31 |
+| 256 | 20+0,2 | 500 | +159 =192 -149 | **+7** (±25) |
+| 512 | 10+0,1 | 200 | +33 =53 -114 | -149 |
+| 512 | 40+0,4 | 240 | +48 =80 -112 | -95 |
+
+Contra Stockfish `UCI_Elo` 2600 (10+0,1, 200 partides) la 256 va fer 75,5 % davant del 65,5 % de la 0.11.0, però la confirmació amb més partides ho deixa en un empat.
+
+- **La 256 empata amb la 0.11.0:** més dades (109 M contra 72 M) no donen guany mesurable. Probablement el límit són les etiquetes (cerca de 8.000 nodes) i no la quantitat de dades.
+- **La 512 perd:** és un 30 % més lenta (≈1,5 M de nodes/s contra ≈2,2 M) i, amb més temps, perd menys però continua perdent clarament. Tampoc es va veure cap guany que compensés la velocitat.
+- Canvis conservats: `DataGen` fa 2–4 jugades aleatòries després del llibre, i el notebook té la mida (`HIDDEN`) com a paràmetre i fa servir CUDA 13.0 (el de Kaggle actual).
+
 ## SEE (provat i no adoptat)
 
 El *Static Exchange Evaluation* simula les recaptures a la casella d'una captura per saber si perd material. Es va provar com a v0.8.0 a la branca `feature/see` (opcions UCI `See` i `SeeMargin`), contra la v0.7.0 a 10+0,1:
@@ -151,7 +174,7 @@ Abans, a la v0.8.0 també es va provar posar els escacs primer a l'ordenació (`
 - **Regla afegida:** a les 6 primeres semijugades no es mouen peons de les columnes a, b, g, h, ni cavalls a la vora, ni torres. L'avaluació sola no les veu com a dolentes.
 - **Filtres finals:** la posició d'inici és dins de ±30 cp a les dues primeres semijugades i dins del marge (50 cp per defecte, cerca de 20.000 nodes) a la resta, sense escac, sense captura com a millor jugada i sense duplicats (clau Zobrist).
 
-És més lent que el llibre aleatori (uns 10 % dels intents s'accepten). El llibre barrejat amb obertures aleatòries és una opció per a la NNUE: `datagen` accepta el llibre i fa 0–2 semijugades aleatòries després.
+És més lent que el llibre aleatori (uns 10 % dels intents s'accepten). El llibre barrejat amb obertures aleatòries és una opció per a la NNUE: `datagen` accepta el llibre i fa 2–4 semijugades aleatòries després (0–2 fins a la 0.11.0; amb un llibre gran, més semijugades redueixen els duplicats).
 
 ## Full de ruta
 

@@ -89,10 +89,10 @@ public static class DataGen
         pos.SetFen(_book == null ? Position.StartFen : _book[rng.Next(_book.Length)]);
         s.NewGame();
 
-        // Jugades aleatòries (0-2 després d'una obertura del llibre, perquè no surtin partides idèntiques).
+        // Jugades aleatòries (2-4 després d'una obertura del llibre, perquè no surtin partides idèntiques).
         Span<int> moves = stackalloc int[320];
         Span<int> ok = stackalloc int[320];
-        int randomPlies = _book == null ? RandomPlies + rng.Next(2) : rng.Next(3);
+        int randomPlies = _book == null ? RandomPlies + rng.Next(2) : 2 + rng.Next(3);
         for (int i = 0; i < randomPlies; i++)
         {
             int n = MoveGen.Generate(pos, moves);
