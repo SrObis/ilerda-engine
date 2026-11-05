@@ -2,7 +2,7 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda és el nom romà de Lleida).
 
-**Estat:** v0.11.0 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, poda null move, LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa). Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.12.0 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa). Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
@@ -10,13 +10,15 @@ Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda
 - Cerca negamax amb alfa-beta, aprofundiment iteratiu, cerca de quiescència, extensió per escac i ordenació MVV-LVA.
 - Claus Zobrist incrementals, taula de transposició (opció UCI `Hash`, 64 MB per defecte) i detecció de repeticions.
 - Ordenació de jugades tranquil·les amb killers (2 per nivell) i history.
+- PVS (*principal variation search*): la primera jugada de cada node es cerca amb finestra completa i la resta amb finestra nul·la; només es repeteixen amb finestra completa si superen alfa en un node PV.
+- Finestres d'aspiració: a partir de profunditat 5 el fil principal cerca al voltant de la puntuació de la iteració anterior (±20 cp) i eixampla la finestra al doble cada cop que falla.
 - Poda null move (no en escac, ni sense peces, ni dues vegades seguides).
 - LMR: les jugades tranquil·les que es proven tard es cerquen a menys profunditat i, si sorprenen, es tornen a cercar a fons. Els paràmetres són opcions UCI (`LmrDiv`, `LmrStart`, `LmrHist`).
 - Reverse futility (profunditat ≤ 6) i futility (≤ 4), amb marges configurables (`RfpMargin`, `FutMargin`).
 - Cerca multifil amb Lazy SMP (opció UCI `Threads`, 1 per defecte): els fils ajudants cerquen la mateixa posició amb una taula de transposició compartida sense bloquejos i el fil principal tria la jugada. Vegeu [Multifil](#multifil-lazy-smp).
-- Control de temps (`wtime`, `btime`, `winc`, `binc`, `movestogo`, `movetime`, `depth`, `infinite`), amb opció `MoveOverhead` (0 ms per defecte) i un límit del terç del temps que queda.
+- Control de temps (`wtime`, `btime`, `winc`, `binc`, `movestogo`, `movetime`, `depth`, `infinite`), amb opció `MoveOverhead` (20 ms per defecte) i un límit del terç del temps que queda.
 - Avaluació NNUE (xarxa 768 → 256 → 1 amb SCReLU, acumuladors incrementals i xarxa incrustada; opció `EvalFile`) i, com a alternativa (`EvalFile none`), l'avaluació *tapered* amb taules PeSTO.
-- Comandes extra: `perft N`, `divide N` i `d` (mostra el tauler).
+- Comandes extra: `perft N`, `divide N`, `d` (mostra el tauler) i `bench [profunditat]` (cerca de profunditat fixa, 12 per defecte, sobre 10 posicions fixes; el total de nodes serveix de signatura de la versió i és determinista amb `Threads=1`).
 - `ilerda book <línies> <fitxer> [fils] [llavor] [nodes] [marge]`: crea un llibre d'obertures EPD equilibrades per a `datagen`. Vegeu [Llibre d'obertures propi](#llibre-dobertures-propi-ilerda-book).
 - `ilerda datagen <partides> <nodes> <fitxer> [fils] [llavor] [llibre.epd]`: autojoc amb límit de nodes per generar dades d'entrenament (`FEN | puntuació | resultat`). Amb 0 partides no s'atura. Els fitxers van a `data/` (no es puja a GitHub).
 
@@ -191,6 +193,7 @@ Abans, a la v0.8.0 també es va provar posar els escacs primer a l'ordenació (`
 - [x] Comanda `datagen` per generar dades d'autojoc
 - [x] Proves automàtiques amb cutechess-cli i SPRT
 - [x] Avaluació NNUE entrenada amb dades d'autojoc (v0.10.0: +175 ± 49 Elo contra la 0.9.1; vegeu [NNUE](#nnue))
+- [x] PVS i finestres d'aspiració (v0.12.0: +86 Elo contra la 0.11.0, 277 partides vàlides a 5+0,05, +122 =100 -55; marge d'uns ±40 Elo)
 - [ ] Enviar a CCRL i CEGT, i després a les divisions baixes del TCEC
 
 ## Llicència

@@ -3,7 +3,7 @@ namespace Ilerda;
 public static class Uci
 {
     public const string Name = "Ilerda";
-    public const string Version = "0.11.0";
+    public const string Version = "0.12.0";
     public const string Author = "Jordi Obis";
 
     static readonly object OutLock = new();
@@ -17,13 +17,27 @@ public static class Uci
         }
     }
 
+    static readonly string[] BenchFens =
+    {
+        Position.StartFen,
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+        "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+        "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+        "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
+        "2rq1rk1/pp3ppp/2n1pn2/3p4/3P4/2NBPN2/PP3PPP/R2Q1RK1 w - - 0 11",
+        "8/8/4k3/8/2p5/2K5/8/3R4 w - - 0 1",
+        "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1",
+        "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+    };
+
     public static void Loop()
     {
         var pos = new Position();
         pos.SetFen(Position.StartFen);
         var searcher = new Searcher();
         Thread? worker = null;
-        long moveOverhead = 0;
+        long moveOverhead = 20;
 
         void StopSearch()
         {
@@ -47,7 +61,7 @@ public static class Uci
                     Send($"id author {Author}");
                     Send("option name Hash type spin default 64 min 1 max 4096");
                     Send("option name Threads type spin default 1 min 1 max 256");
-                    Send("option name MoveOverhead type spin default 0 min 0 max 5000");
+                    Send("option name MoveOverhead type spin default 20 min 0 max 5000");
                     Send("option name LmrDiv type spin default 225 min 50 max 1000");
                     Send("option name LmrStart type spin default 5 min 2 max 20");
                     Send("option name LmrHist type spin default 2500 min 100 max 100000");
@@ -112,6 +126,27 @@ public static class Uci
                     var sw = System.Diagnostics.Stopwatch.StartNew();
                     ulong nodes = t[0] == "divide" ? Perft.Divide(pos, depth, Send) : Perft.Run(pos, depth);
                     Send($"nodes {nodes} time {sw.ElapsedMilliseconds}");
+                    break;
+                }
+
+                case "bench":
+                {
+                    // Cerca de profunditat fixa sobre posicions fixes: el total de nodes és la signatura de la versió
+                    // (determinista amb Threads=1).
+                    StopSearch();
+                    int bdepth = t.Length > 1 ? int.Parse(t[1]) : 12;
+                    long total = 0;
+                    var bsw = System.Diagnostics.Stopwatch.StartNew();
+                    var bp = new Position();
+                    foreach (var fen in BenchFens)
+                    {
+                        searcher.NewGame();
+                        bp.SetFen(fen);
+                        searcher.Think(bp, bdepth, 0, null);
+                        total += searcher.Nodes;
+                    }
+                    long bms = Math.Max(1, bsw.ElapsedMilliseconds);
+                    Send($"{total} nodes {total * 1000 / bms} nps");
                     break;
                 }
 

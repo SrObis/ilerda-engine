@@ -88,6 +88,9 @@ public sealed class Searcher
     public void SetThreads(int n) => _threads = Math.Clamp(n, 1, 256);
     public int Threads => _threads;
 
+    /// <summary>Nodes totals de l'última cerca (per a bench).</summary>
+    public long Nodes => TotalNodes();
+
     public void NewGame()
     {
         _tt.Clear();
@@ -174,7 +177,24 @@ public sealed class Searcher
             // Els ajudants se salten alguns nivells perquè no repeteixin tots la mateixa feina.
             if (_id > 0 && depth > 1 && (depth + _id) % 3 == 0) continue;
 
-            int score = Negamax(depth, -Inf, Inf, 0);
+            // Finestres d'aspiració: a partir de depth 5 es cerca al voltant de l'última puntuació
+            // i s'eixampla (x2) cada cop que falla.
+            int score;
+            if (depth < 5 || _id > 0)
+                score = Negamax(depth, -Inf, Inf, 0);
+            else
+            {
+                int delta = 20, a = Math.Max(-Inf, LastScore - delta), b = Math.Min(Inf, LastScore + delta);
+                while (true)
+                {
+                    score = Negamax(depth, a, b, 0);
+                    if (_stopped) break;
+                    if (score <= a && a > -Inf) { a = Math.Max(-Inf, a - delta); delta *= 2; }
+                    else if (score >= b && b < Inf) { b = Math.Min(Inf, b + delta); delta *= 2; }
+                    else break;
+                    if (delta > 600) { a = -Inf; b = Inf; }
+                }
+            }
             if (_stopped) break;
             if (_id > 0)
             {
@@ -295,20 +315,25 @@ public sealed class Searcher
                 continue;
             }
 
-            // LMR: les jugades tranquil·les que es proven tard (ja ordenades) es cerquen a menys
-            // profunditat amb finestra nul·la; si sorprenen (superen alfa) es tornen a cercar a fons.
+            // PVS: la primera jugada es cerca amb finestra completa; la resta amb finestra nul·la
+            // (amb LMR si cal) i només es repeteixen amb finestra completa si superen alfa en un node PV.
             int score;
-            bool reduce = quiet && depth >= 3 && legal >= _lmrStart && ply > 0 && !inCheck
-                          && m != _killers[ply, 0] && m != _killers[ply, 1] && !_pos.InCheck();
-            if (reduce)
+            if (legal == 1) score = -Negamax(depth - 1, -beta, -alpha, ply + 1);
+            else
             {
-                // Les jugades amb bon history (que han tallat sovint) es redueixen menys.
-                int r = _lmr[Math.Min(depth, 63), Math.Min(legal, 63)] - hist / _lmrHist;
-                r = Math.Min(r, depth - 2);
+                bool reduce = quiet && depth >= 3 && legal >= _lmrStart && ply > 0 && !inCheck
+                              && m != _killers[ply, 0] && m != _killers[ply, 1] && !_pos.InCheck();
+                int r = 0;
+                if (reduce)
+                {
+                    // Les jugades amb bon history (que han tallat sovint) es redueixen menys.
+                    r = _lmr[Math.Min(depth, 63), Math.Min(legal, 63)] - hist / _lmrHist;
+                    r = Math.Min(r, depth - 2);
+                }
                 score = r > 0 ? -Negamax(depth - 1 - r, -alpha - 1, -alpha, ply + 1) : alpha + 1;
-                if (score > alpha) score = -Negamax(depth - 1, -beta, -alpha, ply + 1);
+                if (score > alpha) score = -Negamax(depth - 1, -alpha - 1, -alpha, ply + 1);
+                if (pv && score > alpha && score < beta) score = -Negamax(depth - 1, -beta, -alpha, ply + 1);
             }
-            else score = -Negamax(depth - 1, -beta, -alpha, ply + 1);
             _pos.UnmakeMove();
             if (_stopped) return 0;
 
