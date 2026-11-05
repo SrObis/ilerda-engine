@@ -1,5 +1,18 @@
 # Canvis
 
+## 0.12.0 — PVS i finestres d'aspiració
+
+**Problema.** Quan una jugada no es redueix amb LMR, es cercava amb finestra completa, i cada iteració començava amb finestra infinita.
+
+**Canvi.**
+
+- **PVS:** la primera jugada legal es cerca amb finestra completa; les altres amb finestra nul·la (reduïda si toca LMR) i només es repeteixen amb finestra completa si superen alfa en un node PV.
+- **Finestres d'aspiració:** des de profunditat 5 el fil principal cerca amb la finestra [puntuació ± 20] i la dobla cada cop que falla. Els fils ajudants continuen amb finestra completa.
+- **Comanda `bench [profunditat]`:** cerca de profunditat fixa (12 per defecte) sobre 10 posicions; el total de nodes (9.115.129 a profunditat 12 amb un fil) identifica la versió.
+- **`MoveOverhead`** per defecte passa de 0 a 20 ms, per no perdre per temps amb interfícies gràfiques i xarxa.
+
+**Resultat.** Contra la 0.11.0 (5+0,05, 277 partides vàlides, 6 partides simultànies): +122 =100 -55, uns **+86 Elo** (marge d'uns ±40; no és un SPRT concloent).
+
 ## 0.11.0 — Xarxa NNUE reentrenada amb dades noves
 
 **Problema.** La xarxa de la 0.10.0 s'havia entrenat amb etiquetes d'un motor de la 0.6.1 i obertures aleatòries.
