@@ -1,5 +1,17 @@
 # Canvis
 
+## 0.13.0 — Malus de history amb gravity
+
+**Problema.** La history només tenia bonus (`depth²`) amb un topall lineal: les jugades tranquil·les que es provaven abans de la que talla no en sortien penalitzades.
+
+**Canvi.**
+
+- Quan una jugada tranquil·la talla, rep un bonus de `depth²` (màxim 1500) i les tranquil·les provades abans a aquell node, que no han tallat, reben el mateix valor en negatiu (fins a 64 per node).
+- *Gravity*: `h += bonus - h·|bonus| / 6000`, de manera que el valor queda acotat sense retallar-lo a mà.
+- `bench 12` (un fil): 8.990.810 nodes (abans 9.115.129).
+
+**Resultat.** Contra la 0.12.0 (5+0,05, 5.000 partides, 6 simultànies): +1490 =2139 -1371, **+8,3 ± 7,3 Elo**, LOS 98,7 %. Cap partida perduda per temps. És una millora petita: la history anterior ja funcionava bé.
+
 ## 0.12.0 — PVS i finestres d'aspiració
 
 **Problema.** Quan una jugada no es redueix amb LMR, es cercava amb finestra completa, i cada iteració començava amb finestra infinita.

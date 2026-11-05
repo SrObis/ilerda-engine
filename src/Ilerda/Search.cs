@@ -106,15 +106,24 @@ public sealed class Searcher
         return n;
     }
 
-    void UpdateQuietHistory(int m, int ply, int depth)
+    // History amb "gravity": el canvi es redueix a mesura que el valor s'acosta al màxim, així queda acotat.
+    void BumpHistory(int m, int bonus)
+    {
+        ref int h = ref _history[_pos.Side, MoveGen.From(m), MoveGen.To(m)];
+        h += bonus - h * Math.Abs(bonus) / HistoryMax;
+    }
+
+    void UpdateQuietHistory(int m, int ply, int depth, ReadOnlySpan<int> tried)
     {
         if (ply < 128 && _killers[ply, 0] != m)
         {
             _killers[ply, 1] = _killers[ply, 0];
             _killers[ply, 0] = m;
         }
-        ref int h = ref _history[_pos.Side, MoveGen.From(m), MoveGen.To(m)];
-        h = Math.Min(h + depth * depth, HistoryMax);
+        // Bonus per a la jugada que talla i malus per a les tranquil·les provades abans que no han tallat.
+        int bonus = Math.Min(depth * depth, 1500);
+        BumpHistory(m, bonus);
+        foreach (int q in tried) BumpHistory(q, -bonus);
     }
 
     bool IsQuiet(int m) =>
@@ -296,7 +305,8 @@ public sealed class Searcher
         int n = MoveGen.Generate(_pos, moves);
         ScoreMoves(moves, scores, n, ttMove, ply);
 
-        int legal = 0, best = -Inf, bestMove = 0;
+        int legal = 0, best = -Inf, bestMove = 0, triedCount = 0;
+        Span<int> tried = stackalloc int[64];
         for (int i = 0; i < n; i++)
         {
             PickBest(moves, scores, i, n);
@@ -347,11 +357,12 @@ public sealed class Searcher
                     alpha = score;
                     if (alpha >= beta)
                     {
-                        if (quiet) UpdateQuietHistory(m, ply, depth);
+                        if (quiet) UpdateQuietHistory(m, ply, depth, tried[..triedCount]);
                         break;
                     }
                 }
             }
+            if (quiet && triedCount < tried.Length) tried[triedCount++] = m;
         }
 
         if (legal == 0) return inCheck ? -Mate + ply : 0;
