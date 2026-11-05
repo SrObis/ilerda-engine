@@ -2,14 +2,14 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda és el nom romà de Lleida).
 
-**Estat:** v0.12.0 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa). Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.13.0 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa). Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
 - Bitboards (atacs de peces lliscants amb magic bitboards) i generació de moviments pseudolegals amb comprovació de legalitat (enroc, captura al pas i promocions incloses).
 - Cerca negamax amb alfa-beta, aprofundiment iteratiu, cerca de quiescència, extensió per escac i ordenació MVV-LVA.
 - Claus Zobrist incrementals, taula de transposició (opció UCI `Hash`, 64 MB per defecte) i detecció de repeticions.
-- Ordenació de jugades tranquil·les amb killers (2 per nivell) i history.
+- Ordenació de jugades tranquil·les amb killers (2 per nivell) i history amb *malus* i *gravity*: la jugada tranquil·la que talla rep un bonus (`depth²`, màxim 1500) i les tranquil·les provades abans que no han tallat reben el mateix valor en negatiu; el canvi es redueix a mesura que el valor s'acosta al màxim (6000), així queda acotat.
 - PVS (*principal variation search*): la primera jugada de cada node es cerca amb finestra completa i la resta amb finestra nul·la; només es repeteixen amb finestra completa si superen alfa en un node PV.
 - Finestres d'aspiració: a partir de profunditat 5 el fil principal cerca al voltant de la puntuació de la iteració anterior (±20 cp) i eixampla la finestra al doble cada cop que falla.
 - Poda null move (no en escac, ni sense peces, ni dues vegades seguides).
@@ -194,6 +194,7 @@ Abans, a la v0.8.0 també es va provar posar els escacs primer a l'ordenació (`
 - [x] Proves automàtiques amb cutechess-cli i SPRT
 - [x] Avaluació NNUE entrenada amb dades d'autojoc (v0.10.0: +175 ± 49 Elo contra la 0.9.1; vegeu [NNUE](#nnue))
 - [x] PVS i finestres d'aspiració (v0.12.0: +86 Elo contra la 0.11.0, 277 partides vàlides a 5+0,05, +122 =100 -55; marge d'uns ±40 Elo)
+- [x] Malus de history amb *gravity* (v0.13.0: +8,3 ± 7,3 Elo contra la 0.12.0, 5.000 partides a 5+0,05, +1490 =2139 -1371, LOS 98,7 %)
 - [ ] Enviar a CCRL i CEGT, i després a les divisions baixes del TCEC
 
 ## Llicència
