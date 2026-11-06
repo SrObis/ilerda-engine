@@ -22,11 +22,14 @@ param(
     [int]$Rounds = 50,             # cada ronda son 2 partides (colors canviats)
     [int]$Concurrency = 2,         # partides simultanies (no superis els nuclis de la CPU)
     [double]$Elo0 = 0,             # SPRT: hipotesi nul.la (no hi ha millora)
-    [double]$Elo1 = 10             # SPRT: millora que volem detectar
+    [double]$Elo1 = 10,            # SPRT: millora que volem detectar
+    [string]$Openings = ""         # per defecte tools\obertures.epd (2.000 posicions); .pgn o .epd
 )
 
 $root = Split-Path -Parent $PSScriptRoot
-$openings = Join-Path $root "tools\openings.pgn"
+$openings = if ($Openings) { $Openings } else { Join-Path $root "tools\obertures.epd" }
+# EPD: cada linia ja es la posicio d'inici. PGN: es juguen les 8 primeres semijugades.
+$openFmt = if ($openings -like "*.epd") { ,"format=epd" } else { "format=pgn", "plies=8" }
 $out = Join-Path $root "tools\resultat.pgn"
 
 # Si el valor no es un fitxer, es busca com a versio guardada: Versions\Ilerda-<valor>\Ilerda.exe
@@ -51,7 +54,7 @@ if (-not (Get-Command $CutechessCli -ErrorAction SilentlyContinue)) {
     -engine name=Nou cmd="$Nou" proto=uci `
     -engine name=Vell cmd="$Vell" proto=uci `
     -each tc=$Tc `
-    -openings file="$openings" format=pgn order=random plies=8 `
+    -openings file="$openings" $openFmt order=random `
     -games 2 -rounds $Rounds -repeat -recover `
     -concurrency $Concurrency `
     -sprt elo0=$Elo0 elo1=$Elo1 alpha=0.05 beta=0.05 `
