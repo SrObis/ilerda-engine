@@ -170,12 +170,30 @@ Abans, a la v0.8.0 també es va provar posar els escacs primer a l'ordenació (`
 
 La *continuation history* puntua una jugada tranquil·la segons la peça i la casella d'arribada de les jugades fetes 1 i 2 plies abans (taula de 12×64×12×64 valors per fil, actualitzada amb el mateix bonus i malus que la history normal). S'hi va provar com a v0.13.2 a la branca `feature/conthist`, només per a l'ordenació de jugades tranquil·les (opció UCI `ContWeight`, el pes en %), contra la v0.13.1 a 5+0,05:
 
-| Pes | Partides | Resultat | Elo |
+| Match | Partides | Resultat | Elo |
 |---|---|---|---|
-| 100 % | 1.338 | +370 =552 -416 | -11,9 ± 14,3 |
-| 30 % | 2.084 | +606 =871 -607 | -0,2 ± 11,4 |
+| Primer | 1.338 | +370 =552 -416 | -11,9 ± 14,3 |
+| Segon | 2.084 | +606 =871 -607 | -0,2 ± 11,4 |
+| Total | 3.422 | +976 =1423 -1023 | -4,8 ± 9 |
 
-Amb pes complet empitjora una mica (a `bench 12` també cerca més nodes: 9,44 M contra 9,00 M) i amb pes reduït queda en zero, a més de costar un 12 % de velocitat i 2,3 MB per fil. Els dos matches es van aturar abans d'hora, quan ja era clar que no hi havia guany. No es fusiona. Queda per provar com a senyal de LMR i de poda, que és on aporta més en altres motors.
+**Correcció:** el segon match havia de ser amb pes del 30 %, però `ContWeight` no estava declarada a la resposta `uci` i cutechess només envia les opcions que el motor anuncia. Els dos matches es van jugar, doncs, **amb pes complet**, i el pes reduït mai s'ha provat de debò. Amb pes complet no hi ha guany (a `bench 12` també cerca més nodes: 9,44 M contra 9,00 M) i costa un 12 % de velocitat i 2,3 MB per fil. Els matches es van aturar abans d'hora, quan ja era clar que no hi havia guany. No es fusiona. Queda per provar amb el pes reduït i com a senyal de LMR i de poda, que és on aporta més en altres motors.
+
+## LMP i *improving* (provat i no adoptat)
+
+La *late move pruning* (LMP) descarta les jugades tranquil·les tardanes a poca profunditat, i la bandera *improving* (l'avaluació estàtica és millor que la de fa 2 plies) fa la poda més agressiva quan la posició no millora i més suau quan sí. S'hi va provar com a v0.13.2 a la branca `feature/lmp-improving` (opcions UCI `LmpDepth` i `Improving`), contra la v0.13.1 a 5+0,05:
+
+- **LMP:** a profunditat ≤ 8, es descarta la jugada tardana si ja se n'han provat més de `3 + profunditat²` (la meitat si no millora).
+- **Improving:** menys marge de RFP quan millora, i una reducció extra de LMR quan no millora.
+
+| Versió | Partides | Resultat | Elo |
+|---|---|---|---|
+| LMP + improving | 5.000 | +1019 =1739 -2242 | -86,7 ± 7,9 |
+| Només improving (`LmpDepth=0`) | 800 | +197 =326 -277 | -34,9 ± 18,6 |
+| Només LMP (`Improving=0`) | 800 | +189 =338 -273 | -36,6 ± 18,3 |
+
+Cada part per separat perd uns 35 Elo, i juntes es sumen. Amb tot activat el motor cerca uns 0,6 plies més, però avalua unes 23 cp més optimista i perd sobretot finals de partida: poda massa. Possible causa: el llindar compta totes les jugades legals, no només les tranquil·les, i arriba fins a profunditat 8, massa per a una xarxa tan petita. No es fusiona. Queda per provar una LMP més suau (profunditat ≤ 4 i comptant només tranquil·les).
+
+**Nota sobre les proves:** els primers matches d'ablació van ser invàlids per la mateixa raó que a la secció anterior (opcions no declarades); les xifres de dalt són de la repetició amb les opcions declarades a `uci`. Des d'ara, abans de cada match es comprova que la profunditat mitjana canviï amb l'opció.
 
 ## Llibre d'obertures propi (`ilerda book`)
 

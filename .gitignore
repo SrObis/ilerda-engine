@@ -21,3 +21,6 @@ tools/stockfish/
 
 # Xarxes experimentals locals
 nets/
+
+# PGN de les proves de matches (pesen desenes de MB; es poden tornar a generar)
+tools/resultat*.pgn
