@@ -47,7 +47,9 @@ Cada canvi s'ha de mesurar. `dotnet build` sobreescriu sempre `bin/Release/net8.
 .\tools\match.ps1 -Nou 0.3.0 -Vell 0.2.0     # matx amb cutechess-cli i test SPRT
 ```
 
-El matx fa servir les obertures de `tools/openings.pgn`. Vegeu [Versions](Versions/README.md).
+El matx fa servir les 2.000 posicions de `tools/obertures.epd` (`-Openings` accepta un altre fitxer `.epd` o `.pgn`). Vegeu [Versions](Versions/README.md).
+
+**Per què un banc d'obertures gran.** Fins a la 0.13.1 els matxs feien servir les 20 obertures de `tools/openings.pgn`: en 5.000 partides cada obertura sortia unes 250 vegades, i el resultat podia dependre més d'aquelles 20 posicions que de la força del motor. `tools/obertures.epd` s'ha generat amb `ilerda book` (dues tandes de 2.400 línies, llavors 20261106 i 777123, motor 0.13.1), i se n'han tret els duplicats i **totes les posicions que surten als llibres d'entrenament de la NNUE** (`data/llibre*.epd`): més de la meitat coincidien, i provar el motor amb posicions d'entrenament afavoreix la xarxa. En queden 2.145 i se'n prenen 2.000 a l'atzar. Amb 5.000 partides, cada posició es juga un cop o dos amb cada color. `ajustar.ps1`, `calibrar.ps1` i `comparar-sf.ps1` continuen amb `openings.pgn` perquè els seus resultats es puguin comparar amb els anteriors.
 
 ## Proves d'afinament
 
