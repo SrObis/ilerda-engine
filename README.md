@@ -166,6 +166,17 @@ Variants contra el SEE complet (200 partides a 5+0,05, marge d'uns ±40 Elo): se
 
 Abans, a la v0.8.0 també es va provar posar els escacs primer a l'ordenació (`prova/escacs-primer`, -9 ± 40 Elo, LOS 33 %), amb el mateix resultat.
 
+## History de continuació (provada i no adoptada)
+
+La *continuation history* puntua una jugada tranquil·la segons la peça i la casella d'arribada de les jugades fetes 1 i 2 plies abans (taula de 12×64×12×64 valors per fil, actualitzada amb el mateix bonus i malus que la history normal). S'hi va provar com a v0.13.2 a la branca `feature/conthist`, només per a l'ordenació de jugades tranquil·les (opció UCI `ContWeight`, el pes en %), contra la v0.13.1 a 5+0,05:
+
+| Pes | Partides | Resultat | Elo |
+|---|---|---|---|
+| 100 % | 1.338 | +370 =552 -416 | -11,9 ± 14,3 |
+| 30 % | 2.084 | +606 =871 -607 | -0,2 ± 11,4 |
+
+Amb pes complet empitjora una mica (a `bench 12` també cerca més nodes: 9,44 M contra 9,00 M) i amb pes reduït queda en zero, a més de costar un 12 % de velocitat i 2,3 MB per fil. Els dos matches es van aturar abans d'hora, quan ja era clar que no hi havia guany. No es fusiona. Queda per provar com a senyal de LMR i de poda, que és on aporta més en altres motors.
+
 ## Llibre d'obertures propi (`ilerda book`)
 
 `ilerda book <línies> <fitxer> [fils] [llavor] [nodes] [marge]` crea un llibre EPD per passar-lo a `datagen`. Per què no n'hi ha prou amb obertures aleatòries ni amb descarregar un llibre:
@@ -197,6 +208,7 @@ Abans, a la v0.8.0 també es va provar posar els escacs primer a l'ordenació (`
 - [x] PVS i finestres d'aspiració (v0.12.0: +86 Elo contra la 0.11.0, 277 partides vàlides a 5+0,05, +122 =100 -55; marge d'uns ±40 Elo)
 - [x] Malus de history amb *gravity* (v0.13.0: +8,3 ± 7,3 Elo contra la 0.12.0, 5.000 partides a 5+0,05, +1490 =2139 -1371, LOS 98,7 %)
 - [x] Taules per material insuficient (v0.13.1: +0,3 ± 10,2 Elo contra la 0.13.0, 2.656 partides a 5+0,05; és una correcció, no una millora de força: abans rei i alfil contra rei donava +269 cp)
+- [ ] History de continuació (provada i no adoptada; vegeu [History de continuació](#history-de-continuació-provada-i-no-adoptada))
 - [ ] Enviar a CCRL i CEGT, i després a les divisions baixes del TCEC
 
 ## Llicència
