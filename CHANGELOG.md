@@ -10,7 +10,7 @@
 - **Quiescència amb taula de transposició:** fora de PV una entrada de qualsevol profunditat talla la cerca; l'avaluació estàtica guardada s'usa en lloc de recalcular-la; els resultats es guarden amb profunditat 0 i la millor captura, que també s'usa per ordenar.
 - `bench 12` (un fil): 6.990.007 nodes (abans 9.868.027, -29 %) a uns 2,02 M nodes per segon (abans 2,26 M, -11 %), és a dir, un 21 % menys de temps fins a la mateixa profunditat. Només la taula a la quiescència: 7.968.275 nodes; l'IIR en treu un 12 % més.
 
-**Resultat.** Contra la 0.13.4 (5+0,05, 6 simultànies): +1503 =2179 -1318 en 5.000 partides, **+12,9 ± 7,2 Elo**. Cap partida perduda per temps. Pot ser que contra un adversari extern es vegi menys, com va passar amb la 0.13.3.
+**Resultat.** Contra la 0.13.4 (5+0,05, 6 simultànies): +1503 =2179 -1318 en 5.000 partides, **+12,9 ± 7,2 Elo**. Cap partida perduda per temps. **Contra Stockfish limitat** (10+0,1, 200 partides per nivell): 83,8 % al 2600, 34,8 % al 3000 i 18,5 % al 3190, unes **2.900** de mitjana, igual que la 0.13.3 dins del marge: la millora d'autojoc no es veu contra un adversari extern.
 
 ## 0.13.4 — Taula de transposició amb buckets, edat i avaluació estàtica
 

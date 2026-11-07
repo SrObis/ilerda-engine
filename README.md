@@ -99,6 +99,16 @@ I amb la **v0.13.3** (mateixes condicions):
 | 3000 | +35 =71 -94 | 35,2 % | -106 ± 40 | ≈2894 |
 | 3190 (el màxim) | +7 =55 -138 | 17,2 % | -272 ± 46 | ≈2918 |
 
+I amb la **v0.13.5** (mateixes condicions):
+
+| Stockfish (`UCI_Elo`) | Resultat | Puntuació | Diferència | Estimació |
+|---|---|---|---|---|
+| 2600 | +158 =19 -23 | 83,8 % | +285 ± 59 | ≈2885 |
+| 3000 | +30 =79 -91 | 34,8 % | -109 ± 38 | ≈2891 |
+| 3190 (el màxim) | +12 =50 -138 | 18,5 % | -258 ± 47 | ≈2932 |
+
+La mitjana dels tres nivells és d'unes **2.900**, igual que la 0.13.3 (≈2.910) dins del marge (uns ±30 de mitjana). Contra la 0.13.4 la 0.13.5 guanya +12,9 ± 7,2 Elo en autojoc, però contra Stockfish no es veu: l'autojoc exagera les millores, i aquesta, que és de cerca, no n'és l'excepció. De 600 partides se'n perden 252 (255 amb la 0.13.3): 141 acaben amb 8 peces o menys i en 187 Ilerda havia arribat a veure +1,0 o més, és a dir, es perd sobretot als finals i després d'avaluar-los massa bé.
+
 Mitjana d'unes **2.910**, uns **+35 Elo** per sobre de la 0.13.2 contra un adversari extern (contra la 0.13.2 directament, +118). Els marges de cada nivell són grans (±40–70), així que la diferència entre versions és orientativa.
 
 ## Multifil (Lazy SMP)
