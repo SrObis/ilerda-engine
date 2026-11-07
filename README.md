@@ -81,6 +81,16 @@ Referència externa de la v0.7.0 contra Stockfish amb `UCI_Elo` limitat (10+0,1,
 
 Referència externa (v0.4.0 contra Stockfish amb `UCI_Elo` limitat, 10+0,1, 40 partides per nivell): 84 % al 1800, 63 % al 2100, 50 % al 2400 i 19 % al 2700, és a dir, al voltant de 2400 en aquest test. És una referència orientativa: el ritme és molt ràpid i l'escala de Stockfish no és la de CCRL. Vegeu `tools/calibrar.ps1`.
 
+La mateixa mesura amb la **v0.13.2** (10+0,1, un fil, 200 partides per nivell, obertures de `tools/openings.pgn`, les mateixes de la prova de la xarxa de la 0.11.0):
+
+| Stockfish (`UCI_Elo`) | Resultat | Puntuació | Diferència | Estimació |
+|---|---|---|---|---|
+| 2600 | +151 =23 -26 | 81,2 % | +255 ± 57 | ≈2855 |
+| 3000 | +27 =74 -99 | 32,0 % | -131 ± 39 | ≈2869 |
+| 3190 (el màxim) | +7 =49 -144 | 15,8 % | -291 ± 49 | ≈2899 |
+
+Els tres nivells coincideixen en unes **2.870** en l'escala de Stockfish limitat a aquest ritme. La xarxa de la 0.11.0 hi feia el 70 % contra el 2600 i el 17 % contra el 3000 (≈2.740), així que de la 0.11.0 a la 0.13.2 hi ha uns **+130 Elo** contra un adversari extern, prop dels +205 que sumen els matxs contra la versió anterior. Tampoc és l'Elo de CCRL, que juga a ritmes més lents.
+
 ## Multifil (Lazy SMP)
 
 L'opció `Threads` (1 a 256, 1 per defecte) activa els fils ajudants. Cada fil té els seus killers, *history* i tauler; només es comparteix la taula de transposició.
