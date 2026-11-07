@@ -31,8 +31,21 @@ public sealed class Position
     /// <summary>Clau Zobrist de la posició, mantinguda de forma incremental.</summary>
     public ulong Key;
 
-    /// <summary>Acumuladors NNUE (blanques i negres, N neurones cadascun), mantinguts per AddPiece/RemovePiece quan hi ha xarxa carregada.</summary>
-    public short[] Acc = Array.Empty<short>();
+    // Pila d'acumuladors NNUE (blanques i negres, N neurones cadascun): una entrada per jugada feta.
+    // MakeMove calcula la nova a partir de l'anterior en una sola passada i UnmakeMove només torna enrere,
+    // així que desfer una jugada no costa res i les jugades il·legals no toquen l'acumulador.
+    short[] _accBuf = Array.Empty<short>();
+    int _accTop;
+    static int AccSize => 2 * Nnue.Hidden;
+
+    /// <summary>Acumulador NNUE de la posició actual.</summary>
+    public ReadOnlySpan<short> Acc => _accBuf.AsSpan(_accTop * AccSize, AccSize);
+
+    void EnsureAcc(int top)
+    {
+        int need = (top + 1) * AccSize;
+        if (_accBuf.Length < need) Array.Resize(ref _accBuf, Math.Max(need, Math.Max(_accBuf.Length * 2, 160 * AccSize)));
+    }
 
     static readonly ulong[,] ZPiece = new ulong[12, 64];
     static readonly ulong[] ZCastle = new ulong[16];
@@ -114,14 +127,26 @@ public sealed class Position
         c.Fullmove = Fullmove;
         c.Key = Key;
         Array.Copy(_keyHist, c._keyHist, _histCount);
-        c.Acc = (short[])Acc.Clone();
+        if (Nnue.Loaded)
+        {
+            c.EnsureAcc(0);
+            Acc.CopyTo(c._accBuf);
+        }
         c._histCount = _histCount;
         return c;
     }
 
     /// <summary>Descarta l'historial d'undo (després d'aplicar els moviments d'un "position").
     /// L'historial de claus es conserva per a la detecció de repeticions.</summary>
-    public void ClearHistory() => _ply = 0;
+    public void ClearHistory()
+    {
+        _ply = 0;
+        if (Nnue.Loaded && _accTop > 0)
+        {
+            Acc.CopyTo(_accBuf);
+            _accTop = 0;
+        }
+    }
 
     /// <summary>True si la posició actual ja s'ha vist dins del tram reversible (des de l'últim peó/captura).</summary>
     public bool IsRepetition()
@@ -139,7 +164,6 @@ public sealed class Position
         Bb[piece] |= b;
         ByColor[piece / 6] |= b;
         Board[sq] = piece;
-        if (Nnue.Loaded) Nnue.Add(Acc, piece, sq);
     }
 
     void RemovePiece(int sq)
@@ -150,7 +174,6 @@ public sealed class Position
         Bb[piece] &= b;
         ByColor[piece / 6] &= b;
         Board[sq] = -1;
-        if (Nnue.Loaded) Nnue.Remove(Acc, piece, sq);
     }
 
     void MovePiece(int from, int to)
@@ -161,14 +184,16 @@ public sealed class Position
     }
 
     /// <summary>Recalcula els acumuladors NNUE des de zero (només els biaixos si <paramref name="clearOnly"/>).</summary>
-    public void RefreshAccumulator(bool clearOnly = false)
+    public void RefreshAccumulator()
     {
         if (!Nnue.Loaded) return;
-        if (Acc.Length != 2 * Nnue.Hidden) Acc = new short[2 * Nnue.Hidden];
-        Nnue.Reset(Acc);
-        if (clearOnly) return;
+        // La mida pot haver canviat (xarxa nova): es torna a començar la pila.
+        if (_accBuf.Length % AccSize != 0) _accBuf = Array.Empty<short>();
+        EnsureAcc(_accTop);
+        var acc = _accBuf.AsSpan(_accTop * AccSize, AccSize);
+        Nnue.Reset(acc);
         for (int sq = 0; sq < 64; sq++)
-            if (Board[sq] != -1) Nnue.Add(Acc, Board[sq], sq);
+            if (Board[sq] != -1) Nnue.Add(acc, Board[sq], sq);
     }
 
     public void SetFen(string fen)
@@ -179,7 +204,7 @@ public sealed class Position
         _ply = 0;
         _histCount = 0;
         Key = 0;
-        RefreshAccumulator(clearOnly: true);
+        _accTop = 0;
 
         var parts = fen.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         int rank = 7, file = 0;
@@ -215,6 +240,7 @@ public sealed class Position
         Fullmove = parts.Length > 5 ? int.Parse(parts[5]) : 1;
 
         Key = ComputeKey();
+        RefreshAccumulator();
     }
 
     public bool IsAttacked(int sq, int by)
@@ -276,8 +302,28 @@ public sealed class Position
 
         if (IsAttacked(KingSquare(us), them))
         {
-            UnmakeMove();
+            UnmakeBoard();
             return false;
+        }
+
+        if (Nnue.Loaded)
+        {
+            // Canvis de característiques: parells (peça, casella) afegits i trets.
+            Span<int> adds = stackalloc int[4], subs = stackalloc int[4];
+            int na = 0, ns = 0;
+            subs[ns++] = piece; subs[ns++] = from;
+            adds[na++] = promo != 0 ? us * 6 + promo : piece; adds[na++] = to;
+            if (captured != -1) { subs[ns++] = captured; subs[ns++] = flag == MoveGen.FlagEp ? epCapSq : to; }
+            else if (flag == MoveGen.FlagCastle)
+            {
+                int rook = us * 6 + Pc.Rook;
+                int rf = to > from ? to + 1 : to - 2, rt = to > from ? to - 1 : to + 1;
+                subs[ns++] = rook; subs[ns++] = rf;
+                adds[na++] = rook; adds[na++] = rt;
+            }
+            EnsureAcc(_accTop + 1);
+            Nnue.ApplyDelta(_accBuf.AsSpan(_accTop * AccSize, AccSize), _accBuf.AsSpan((_accTop + 1) * AccSize, AccSize), adds[..na], subs[..ns]);
+            _accTop++;
         }
         return true;
     }
@@ -324,6 +370,12 @@ public sealed class Position
         (Bb[color * 6 + Pc.Knight] | Bb[color * 6 + Pc.Bishop] | Bb[color * 6 + Pc.Rook] | Bb[color * 6 + Pc.Queen]) != 0;
 
     public void UnmakeMove()
+    {
+        UnmakeBoard();
+        if (Nnue.Loaded) _accTop--;
+    }
+
+    void UnmakeBoard()
     {
         var u = _stack[--_ply];
         _histCount--;

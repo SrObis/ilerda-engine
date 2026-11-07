@@ -2,7 +2,7 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda és el nom romà de Lleida).
 
-**Estat:** v0.13.1 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa). Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.13.3 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa). Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
@@ -90,6 +90,16 @@ La mateixa mesura amb la **v0.13.2** (10+0,1, un fil, 200 partides per nivell, o
 | 3190 (el màxim) | +7 =49 -144 | 15,8 % | -291 ± 49 | ≈2899 |
 
 Els tres nivells coincideixen en unes **2.870** en l'escala de Stockfish limitat a aquest ritme. La xarxa de la 0.11.0 hi feia el 70 % contra el 2600 i el 17 % contra el 3000 (≈2.740), així que de la 0.11.0 a la 0.13.2 hi ha uns **+130 Elo** contra un adversari extern, prop dels +205 que sumen els matxs contra la versió anterior. Tampoc és l'Elo de CCRL, que juga a ritmes més lents.
+
+I amb la **v0.13.3** (mateixes condicions):
+
+| Stockfish (`UCI_Elo`) | Resultat | Puntuació | Diferència | Estimació |
+|---|---|---|---|---|
+| 2600 | +167 =10 -23 | 86,0 % | +315 ± 68 | ≈2915 |
+| 3000 | +35 =71 -94 | 35,2 % | -106 ± 40 | ≈2894 |
+| 3190 (el màxim) | +7 =55 -138 | 17,2 % | -272 ± 46 | ≈2918 |
+
+Mitjana d'unes **2.910**, uns **+35 Elo** per sobre de la 0.13.2 contra un adversari extern (contra la 0.13.2 directament, +118). Els marges de cada nivell són grans (±40–70), així que la diferència entre versions és orientativa.
 
 ## Multifil (Lazy SMP)
 
@@ -239,6 +249,7 @@ Cada part per separat perd uns 35 Elo, i juntes es sumen. Amb tot activat el mot
 - [x] Malus de history amb *gravity* (v0.13.0: +8,3 ± 7,3 Elo contra la 0.12.0, 5.000 partides a 5+0,05, +1490 =2139 -1371, LOS 98,7 %)
 - [x] Taules per material insuficient (v0.13.1: +0,3 ± 10,2 Elo contra la 0.13.0, 2.656 partides a 5+0,05; és una correcció, no una millora de força: abans rei i alfil contra rei donava +269 cp)
 - [x] Gestió del temps amb temps òptim i límit dur (v0.13.2: +110,9 ± 8,4 Elo contra la 0.13.1, 4.228 partides a 5+0,05, +1965 =1603 -660; la cerca és idèntica, només canvia com es reparteix el rellotge)
+- [x] Pila d'acumuladors NNUE i actualització en una sola passada (v0.13.3: +50 % de nodes per segon amb els mateixos nodes; +118,1 ± 9,8 Elo contra la 0.13.2, 3.020 partides a 5+0,05, +1415 =1179 -426)
 - [ ] History de continuació (provada i no adoptada; vegeu [History de continuació](#history-de-continuació-provada-i-no-adoptada))
 - [ ] Enviar a CCRL i CEGT, i després a les divisions baixes del TCEC
 

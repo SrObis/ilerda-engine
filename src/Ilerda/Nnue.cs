@@ -84,42 +84,70 @@ public static class Nnue
         (piece / 6 == persp ? 0 : 384) + (piece % 6) * 64 + (persp == 0 ? sq : sq ^ 56);
 
     /// <summary>Posa l'acumulador a punt per a una posició buida: només els biaixos, per a les dues perspectives.</summary>
-    public static void Reset(short[] acc)
+    public static void Reset(Span<short> acc)
     {
-        for (int c = 0; c < 2; c++) Array.Copy(_l0b, 0, acc, c * Hidden, Hidden);
+        for (int c = 0; c < 2; c++) _l0b.AsSpan(0, Hidden).CopyTo(acc.Slice(c * Hidden, Hidden));
     }
 
-    public static void Add(short[] acc, int piece, int sq) => Update(acc, piece, sq, add: true);
-    public static void Remove(short[] acc, int piece, int sq) => Update(acc, piece, sq, add: false);
-
-    static void Update(short[] acc, int piece, int sq, bool add)
+    public static void Add(Span<short> acc, int piece, int sq)
     {
         int h = Hidden;
         for (int c = 0; c < 2; c++)
         {
-            var dst = acc.AsSpan(c * h, h);
+            var dst = acc.Slice(c * h, h);
             var w = _l0w.AsSpan(Feature(c, piece, sq) * h, h);
+            for (int i = 0; i < h; i++) dst[i] += w[i];
+        }
+    }
+
+    /// <summary>
+    /// Acumulador d'una jugada a partir del de la posició anterior, en una sola passada:
+    /// dst = src + pesos(afegides) - pesos(tretes). <paramref name="adds"/> i <paramref name="subs"/>
+    /// són parells (peça, casella): 1 o 2 afegides i 1 o 2 tretes.
+    /// </summary>
+    public static void ApplyDelta(ReadOnlySpan<short> src, Span<short> dst, ReadOnlySpan<int> adds, ReadOnlySpan<int> subs)
+    {
+        int h = Hidden, step = Vector<short>.Count;
+        for (int c = 0; c < 2; c++)
+        {
+            var s = src.Slice(c * h, h);
+            var d = dst.Slice(c * h, h);
+            var a0 = _l0w.AsSpan(Feature(c, adds[0], adds[1]) * h, h);
+            var s0 = _l0w.AsSpan(Feature(c, subs[0], subs[1]) * h, h);
             int i = 0;
-            int step = Vector<short>.Count;
-            if (add)
+            if (adds.Length == 2 && subs.Length == 2)
             {
-                for (; i <= h - step; i += step) (new Vector<short>(dst[i..]) + new Vector<short>(w[i..])).CopyTo(dst[i..]);
-                for (; i < h; i++) dst[i] += w[i];
+                // Cas habitual (jugada sense captura): una afegida i una treta.
+                for (; i <= h - step; i += step)
+                    (new Vector<short>(s[i..]) + new Vector<short>(a0[i..]) - new Vector<short>(s0[i..])).CopyTo(d[i..]);
+                for (; i < h; i++) d[i] = (short)(s[i] + a0[i] - s0[i]);
+            }
+            else if (adds.Length == 2)
+            {
+                // Captura: una afegida i dues tretes.
+                var s1 = _l0w.AsSpan(Feature(c, subs[2], subs[3]) * h, h);
+                for (; i <= h - step; i += step)
+                    (new Vector<short>(s[i..]) + new Vector<short>(a0[i..]) - new Vector<short>(s0[i..]) - new Vector<short>(s1[i..])).CopyTo(d[i..]);
+                for (; i < h; i++) d[i] = (short)(s[i] + a0[i] - s0[i] - s1[i]);
             }
             else
             {
-                for (; i <= h - step; i += step) (new Vector<short>(dst[i..]) - new Vector<short>(w[i..])).CopyTo(dst[i..]);
-                for (; i < h; i++) dst[i] -= w[i];
+                // Enroc: dues afegides i dues tretes.
+                var a1 = _l0w.AsSpan(Feature(c, adds[2], adds[3]) * h, h);
+                var s1 = _l0w.AsSpan(Feature(c, subs[2], subs[3]) * h, h);
+                for (; i <= h - step; i += step)
+                    (new Vector<short>(s[i..]) + new Vector<short>(a0[i..]) + new Vector<short>(a1[i..]) - new Vector<short>(s0[i..]) - new Vector<short>(s1[i..])).CopyTo(d[i..]);
+                for (; i < h; i++) d[i] = (short)(s[i] + a0[i] + a1[i] - s0[i] - s1[i]);
             }
         }
     }
 
     /// <summary>Avaluació en centipeons des del bàndol que juga.</summary>
-    public static int Evaluate(short[] acc, int side)
+    public static int Evaluate(ReadOnlySpan<short> acc, int side)
     {
         int h = Hidden;
-        var us = acc.AsSpan(side * h, h);
-        var them = acc.AsSpan((side ^ 1) * h, h);
+        var us = acc.Slice(side * h, h);
+        var them = acc.Slice((side ^ 1) * h, h);
         long sum = 0;
         int i = 0;
         if (Vector.IsHardwareAccelerated && h % Vector<short>.Count == 0)
