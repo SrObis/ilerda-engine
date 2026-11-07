@@ -50,6 +50,7 @@ public sealed class Searcher
 
     int _rfpMargin = 90;  // marge de reverse futility per nivell de profunditat (1000 = pràcticament desactivada)
     int _futMargin = 110; // marge de futility per nivell de profunditat
+    int _iirDepth = 4;    // profunditat mínima de la reducció iterativa interna (1000 = desactivada)
     int _softTime = 100;  // % del límit de temps passat el qual no s'inicia una iteració nova (100 = només el límit dur)
 
     // Gestió del temps: multiplicador del temps òptim segons quantes iteracions seguides
@@ -75,6 +76,7 @@ public sealed class Searcher
             case "lmrhist": _lmrHist = Math.Clamp(value, 100, 100000); return true;
             case "rfpmargin": _rfpMargin = Math.Clamp(value, 0, 1000); return true;
             case "futmargin": _futMargin = Math.Clamp(value, 0, 1000); return true;
+            case "iirdepth": _iirDepth = Math.Clamp(value, 2, 1000); return true;
             case "softtime": _softTime = Math.Clamp(value, 10, 100); return true;
             default: return false;
         }
@@ -298,6 +300,10 @@ public sealed class Searcher
             }
         }
 
+        // Reducció iterativa interna: sense jugada de la taula la posició no s'ha explorat mai a fons,
+        // i l'ordenació serà dolenta; es cerca un nivell menys (la propera iteració ja trobarà la jugada).
+        if (depth >= _iirDepth && ttMove == 0) depth--;
+
         bool pv = beta - alpha > 1;
         int staticEval = inCheck ? -Inf : ttEval != TranspositionTable.NoEval ? ttEval : Eval.Evaluate(_pos);
 
@@ -402,25 +408,57 @@ public sealed class Searcher
         _nodes++;
 
         if (_pos.InsufficientMaterial()) return 0;
-        int stand = Eval.Evaluate(_pos);
-        if (stand >= beta) return beta;
+
+        // Taula de transposició: qualsevol entrada (de qualsevol profunditat) serveix per tallar fora de PV
+        // i dona l'avaluació estàtica sense tornar-la a calcular.
+        ulong key = _pos.Key;
+        bool pv = beta - alpha > 1;
+        int ttMove = 0, ttEval = TranspositionTable.NoEval;
+        if (_tt.Probe(key, out int tm, out int ts, out ttEval, out _, out Bound tb))
+        {
+            ttMove = tm;
+            if (ts > Mate - 100) ts -= ply;
+            else if (ts < -Mate + 100) ts += ply;
+            if (!pv)
+            {
+                if (tb == Bound.Exact) return ts;
+                if (tb == Bound.Lower && ts >= beta) return ts;
+                if (tb == Bound.Upper && ts <= alpha) return ts;
+            }
+        }
+
+        int stand = ttEval != TranspositionTable.NoEval ? ttEval : Eval.Evaluate(_pos);
+        int standStore = Math.Clamp(stand, -Mate, Mate);
+        if (stand >= beta)
+        {
+            _tt.Store(key, 0, beta, standStore, 0, Bound.Lower);
+            return beta;
+        }
+        int alpha0 = alpha;
         if (stand > alpha) alpha = stand;
 
         Span<int> moves = stackalloc int[320];
         Span<int> scores = stackalloc int[320];
         int n = MoveGen.Generate(_pos, moves, capturesOnly: true);
-        ScoreMoves(moves, scores, n);
+        ScoreMoves(moves, scores, n, ttMove);
 
+        int bestMove = 0;
         for (int i = 0; i < n; i++)
         {
             PickBest(moves, scores, i, n);
-            if (!_pos.MakeMove(moves[i])) continue;
+            int m = moves[i];
+            if (!_pos.MakeMove(m)) continue;
             int score = -Quiesce(-beta, -alpha, ply + 1);
             _pos.UnmakeMove();
             if (_stopped) return 0;
-            if (score >= beta) return beta;
-            if (score > alpha) alpha = score;
+            if (score >= beta)
+            {
+                _tt.Store(key, m, beta, standStore, 0, Bound.Lower);
+                return beta;
+            }
+            if (score > alpha) { alpha = score; bestMove = m; }
         }
+        _tt.Store(key, bestMove, alpha, standStore, 0, alpha > alpha0 ? Bound.Exact : Bound.Upper);
         return alpha;
     }
 

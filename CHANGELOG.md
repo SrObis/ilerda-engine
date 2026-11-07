@@ -1,5 +1,17 @@
 # Canvis
 
+## 0.13.5 — Reducció iterativa interna i taula de transposició a la quiescència
+
+**Problema.** Quan una posició no tenia jugada a la taula, la cerca la tractava igual que les altres encara que l'ordenació fos dolenta. I la quiescència no consultava la taula: tornava a avaluar i a recórrer captures de posicions ja vistes.
+
+**Canvi.**
+
+- **IIR (*internal iterative reduction*):** a profunditat 4 o més, si la taula no dona cap jugada, es cerca un nivell menys; la iteració següent ja la trobarà. Opció UCI `IirDepth` (4 per defecte; 1000 la desactiva).
+- **Quiescència amb taula de transposició:** fora de PV una entrada de qualsevol profunditat talla la cerca; l'avaluació estàtica guardada s'usa en lloc de recalcular-la; els resultats es guarden amb profunditat 0 i la millor captura, que també s'usa per ordenar.
+- `bench 12` (un fil): 6.990.007 nodes (abans 9.868.027, -29 %) a uns 2,02 M nodes per segon (abans 2,26 M, -11 %), és a dir, un 21 % menys de temps fins a la mateixa profunditat. Només la taula a la quiescència: 7.968.275 nodes; l'IIR en treu un 12 % més.
+
+**Resultat.** Contra la 0.13.4 (5+0,05, 6 simultànies): +1503 =2179 -1318 en 5.000 partides, **+12,9 ± 7,2 Elo**. Cap partida perduda per temps. Pot ser que contra un adversari extern es vegi menys, com va passar amb la 0.13.3.
+
 ## 0.13.4 — Taula de transposició amb buckets, edat i avaluació estàtica
 
 **Problema.** La taula tenia una sola entrada per posició: una col·lisió n'esborrava l'anterior, les entrades de cerques velles ocupaven lloc per sempre (sense edat) i no es guardava l'avaluació estàtica, de manera que `Eval.Evaluate` es calculava a cada node encara que la posició ja s'hagués vist.
