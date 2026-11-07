@@ -14,7 +14,8 @@ public sealed class Searcher
     Position _pos = null!;
     long _nodes;
     readonly Stopwatch _sw = new();
-    long _limitMs;
+    long _limitMs;   // límit dur: la cerca s'atura encara que sigui a mitja iteració
+    long _softMs;    // temps òptim (0 = no n'hi ha): no s'inicia cap iteració nova passat aquest temps, ajustat per l'estabilitat
     bool _stopped;
     int _rootBest;
 
@@ -50,6 +51,10 @@ public sealed class Searcher
     int _rfpMargin = 90;  // marge de reverse futility per nivell de profunditat (1000 = pràcticament desactivada)
     int _futMargin = 110; // marge de futility per nivell de profunditat
     int _softTime = 100;  // % del límit de temps passat el qual no s'inicia una iteració nova (100 = només el límit dur)
+
+    // Gestió del temps: multiplicador del temps òptim segons quantes iteracions seguides
+    // la millor jugada no ha canviat (0, 1, 2, 3, 4 o més). Jugada inestable: més temps; estable: menys.
+    static readonly double[] StabilityScale = { 2.0, 1.4, 1.1, 0.9, 0.8 };
 
     static int[,] BuildLmrTable(double divisor)
     {
@@ -129,9 +134,10 @@ public sealed class Searcher
     bool IsQuiet(int m) =>
         MoveGen.Promo(m) == 0 && MoveGen.Flag(m) != MoveGen.FlagEp && _pos.Board[MoveGen.To(m)] == -1;
 
-    public int Think(Position pos, int maxDepth, long timeMs, Action<string>? info)
+    public int Think(Position pos, int maxDepth, long timeMs, Action<string>? info, long softMs = 0)
     {
         _limitMs = timeMs;
+        _softMs = softMs;
         _sw.Restart();
         _halt = false;
 
@@ -181,6 +187,7 @@ public sealed class Searcher
             for (int f = 0; f < 64; f++)
                 for (int t = 0; t < 64; t++) _history[c, f, t] /= 2;
 
+        int stable = 0, prevBest = 0, prevScore = 0;
         for (int depth = 1; depth <= maxDepth; depth++)
         {
             // Els ajudants se salten alguns nivells perquè no repeteixin tots la mateixa feina.
@@ -223,6 +230,18 @@ public sealed class Searcher
             // Temps tou: una iteració nova costa uns 2-3 cops l'anterior, així que si ja s'ha gastat
             // més de la fracció SoftTime del límit no s'arriba a acabar i només es malgasta el temps.
             if (_limitMs > 0 && ms * 100 >= _limitMs * _softTime) break;
+
+            // Temps òptim: si la millor jugada es manté, s'acaba abans; si canvia o la puntuació
+            // cau respecte de la iteració anterior, es pensa més (sempre dins del límit dur).
+            if (_softMs > 0)
+            {
+                stable = depth > 1 && BestMove == prevBest ? stable + 1 : 0;
+                double scale = StabilityScale[Math.Min(stable, StabilityScale.Length - 1)];
+                if (depth > 1 && score < prevScore) scale *= 1.0 + Math.Min(prevScore - score, 100) / 200.0;
+                prevBest = BestMove;
+                prevScore = score;
+                if (depth >= 4 && ms >= _softMs * scale) break;
+            }
         }
     }
 

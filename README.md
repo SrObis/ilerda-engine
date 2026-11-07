@@ -17,7 +17,7 @@ Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda
 - LMR: les jugades tranquil·les que es proven tard es cerquen a menys profunditat i, si sorprenen, es tornen a cercar a fons. Els paràmetres són opcions UCI (`LmrDiv`, `LmrStart`, `LmrHist`).
 - Reverse futility (profunditat ≤ 6) i futility (≤ 4), amb marges configurables (`RfpMargin`, `FutMargin`).
 - Cerca multifil amb Lazy SMP (opció UCI `Threads`, 1 per defecte): els fils ajudants cerquen la mateixa posició amb una taula de transposició compartida sense bloquejos i el fil principal tria la jugada. Vegeu [Multifil](#multifil-lazy-smp).
-- Control de temps (`wtime`, `btime`, `winc`, `binc`, `movestogo`, `movetime`, `depth`, `infinite`), amb opció `MoveOverhead` (20 ms per defecte) i un límit del terç del temps que queda.
+- Control de temps (`wtime`, `btime`, `winc`, `binc`, `movestogo`, `movetime`, `depth`, `infinite`), amb opció `MoveOverhead` (20 ms per defecte). Des de la 0.13.2, temps òptim i límit dur: passat l'òptim no es comença cap iteració nova, i l'òptim s'allarga si la millor jugada canvia o la puntuació cau, i s'escurça si la jugada és estable (opcions `TmDiv` 50 i `TmHard` 500 %; `Tm=0` torna a la gestió antiga). Mai més d'un terç del temps que queda.
 - Avaluació NNUE (xarxa 768 → 256 → 1 amb SCReLU, acumuladors incrementals i xarxa incrustada; opció `EvalFile`) i, com a alternativa (`EvalFile none`), l'avaluació *tapered* amb taules PeSTO.
 - Comandes extra: `perft N`, `divide N`, `d` (mostra el tauler) i `bench [profunditat]` (cerca de profunditat fixa, 12 per defecte, sobre 10 posicions fixes; el total de nodes serveix de signatura de la versió i és determinista amb `Threads=1`).
 - `ilerda book <línies> <fitxer> [fils] [llavor] [nodes] [marge]`: crea un llibre d'obertures EPD equilibrades per a `datagen`. Vegeu [Llibre d'obertures propi](#llibre-dobertures-propi-ilerda-book).
@@ -228,6 +228,7 @@ Cada part per separat perd uns 35 Elo, i juntes es sumen. Amb tot activat el mot
 - [x] PVS i finestres d'aspiració (v0.12.0: +86 Elo contra la 0.11.0, 277 partides vàlides a 5+0,05, +122 =100 -55; marge d'uns ±40 Elo)
 - [x] Malus de history amb *gravity* (v0.13.0: +8,3 ± 7,3 Elo contra la 0.12.0, 5.000 partides a 5+0,05, +1490 =2139 -1371, LOS 98,7 %)
 - [x] Taules per material insuficient (v0.13.1: +0,3 ± 10,2 Elo contra la 0.13.0, 2.656 partides a 5+0,05; és una correcció, no una millora de força: abans rei i alfil contra rei donava +269 cp)
+- [x] Gestió del temps amb temps òptim i límit dur (v0.13.2: +110,9 ± 8,4 Elo contra la 0.13.1, 4.228 partides a 5+0,05, +1965 =1603 -660; la cerca és idèntica, només canvia com es reparteix el rellotge)
 - [ ] History de continuació (provada i no adoptada; vegeu [History de continuació](#history-de-continuació-provada-i-no-adoptada))
 - [ ] Enviar a CCRL i CEGT, i després a les divisions baixes del TCEC
 
