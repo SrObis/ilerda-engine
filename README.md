@@ -2,7 +2,7 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda és el nom romà de Lleida).
 
-**Estat:** v0.13.4 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa). Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.13.5 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, reducció iterativa interna (IIR), LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa). Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
@@ -251,6 +251,7 @@ Cada part per separat perd uns 35 Elo, i juntes es sumen. Amb tot activat el mot
 - [x] Gestió del temps amb temps òptim i límit dur (v0.13.2: +110,9 ± 8,4 Elo contra la 0.13.1, 4.228 partides a 5+0,05, +1965 =1603 -660; la cerca és idèntica, només canvia com es reparteix el rellotge)
 - [x] Pila d'acumuladors NNUE i actualització en una sola passada (v0.13.3: +50 % de nodes per segon amb els mateixos nodes; +118,1 ± 9,8 Elo contra la 0.13.2, 3.020 partides a 5+0,05, +1415 =1179 -426)
 - [x] Taula de transposició amb buckets, edat i avaluació estàtica (v0.13.4: canvi neutre en força, +3,2 ± 7,8 Elo contra la 0.13.3, 4.202 partides a 5+0,05, +1172 =1897 -1133; es fusiona com a base de les singular extensions i perquè ajuda amb `Hash` petit: amb 1 MB, `bench 12` fa 9,91 M nodes contra 11,45 M)
+- [x] Reducció iterativa interna i taula de transposició a la quiescència (v0.13.5: +12,9 ± 7,2 Elo contra la 0.13.4, 5.000 partides a 5+0,05, +1503 =2179 -1318; `bench 12` fa un 29 % menys de nodes i un 21 % menys de temps fins a la mateixa profunditat)
 - [ ] History de continuació (provada i no adoptada; vegeu [History de continuació](#history-de-continuació-provada-i-no-adoptada))
 - [ ] Enviar a CCRL i CEGT, i després a les divisions baixes del TCEC
 
