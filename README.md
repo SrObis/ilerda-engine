@@ -2,13 +2,13 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda és el nom romà de Lleida).
 
-**Estat:** v0.13.3 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa). Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.13.4 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa). Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
 - Bitboards (atacs de peces lliscants amb magic bitboards) i generació de moviments pseudolegals amb comprovació de legalitat (enroc, captura al pas i promocions incloses).
 - Cerca negamax amb alfa-beta, aprofundiment iteratiu, cerca de quiescència, extensió per escac i ordenació MVV-LVA.
-- Claus Zobrist incrementals, taula de transposició (opció UCI `Hash`, 64 MB per defecte) i detecció de repeticions.
+- Claus Zobrist incrementals, taula de transposició (opció UCI `Hash`, 64 MB per defecte) amb buckets de 4 entrades, edat i avaluació estàtica, i detecció de repeticions.
 - Taules per material insuficient (`Position.InsufficientMaterial`): només reis, un sol cavall o alfil, o només alfils a caselles del mateix color. La cerca i la quiescència hi retornen 0, en lloc de fiar-se de l'avaluació de la xarxa.
 - Ordenació de jugades tranquil·les amb killers (2 per nivell) i history amb *malus* i *gravity*: la jugada tranquil·la que talla rep un bonus (`depth²`, màxim 1500) i les tranquil·les provades abans que no han tallat reben el mateix valor en negatiu; el canvi es redueix a mesura que el valor s'acosta al màxim (6000), així queda acotat.
 - PVS (*principal variation search*): la primera jugada de cada node es cerca amb finestra completa i la resta amb finestra nul·la; només es repeteixen amb finestra completa si superen alfa en un node PV.
@@ -250,6 +250,7 @@ Cada part per separat perd uns 35 Elo, i juntes es sumen. Amb tot activat el mot
 - [x] Taules per material insuficient (v0.13.1: +0,3 ± 10,2 Elo contra la 0.13.0, 2.656 partides a 5+0,05; és una correcció, no una millora de força: abans rei i alfil contra rei donava +269 cp)
 - [x] Gestió del temps amb temps òptim i límit dur (v0.13.2: +110,9 ± 8,4 Elo contra la 0.13.1, 4.228 partides a 5+0,05, +1965 =1603 -660; la cerca és idèntica, només canvia com es reparteix el rellotge)
 - [x] Pila d'acumuladors NNUE i actualització en una sola passada (v0.13.3: +50 % de nodes per segon amb els mateixos nodes; +118,1 ± 9,8 Elo contra la 0.13.2, 3.020 partides a 5+0,05, +1415 =1179 -426)
+- [x] Taula de transposició amb buckets, edat i avaluació estàtica (v0.13.4: canvi neutre en força, +3,2 ± 7,8 Elo contra la 0.13.3, 4.202 partides a 5+0,05, +1172 =1897 -1133; es fusiona com a base de les singular extensions i perquè ajuda amb `Hash` petit: amb 1 MB, `bench 12` fa 9,91 M nodes contra 11,45 M)
 - [ ] History de continuació (provada i no adoptada; vegeu [History de continuació](#history-de-continuació-provada-i-no-adoptada))
 - [ ] Enviar a CCRL i CEGT, i després a les divisions baixes del TCEC
 

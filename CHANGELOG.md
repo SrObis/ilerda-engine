@@ -1,5 +1,20 @@
 # Canvis
 
+## 0.13.4 — Taula de transposició amb buckets, edat i avaluació estàtica
+
+**Problema.** La taula tenia una sola entrada per posició: una col·lisió n'esborrava l'anterior, les entrades de cerques velles ocupaven lloc per sempre (sense edat) i no es guardava l'avaluació estàtica, de manera que `Eval.Evaluate` es calculava a cada node encara que la posició ja s'hagués vist.
+
+**Canvi.**
+
+- **Buckets de 4 entrades** (64 bytes). Una posició pot anar a qualsevol de les 4; el reemplaç tria la lliure o la de menys valor.
+- **Edat** de 5 bits, que puja a cada cerca (`go`). El valor d'una entrada és `profunditat - 8 × cerques d'antiguitat`: les velles es reemplacen abans.
+- **Avaluació estàtica** (16 bits) a cada entrada; Negamax la reutilitza i només crida `Eval.Evaluate` si no hi és (mai en escac).
+- La jugada es guarda en 16 bits (des de, a, promoció) i l'indicador (enroc, al pas) es recupera en comparar amb les jugades generades.
+- Mateix esquema sense bloquejos per a Lazy SMP (`Check = clau ^ Data`). No hi ha opcions UCI noves.
+- `bench 12` (un fil): 9.868.027 nodes (abans 8.996.114) i uns 2,31 M nodes per segon (abans 2,23 M). Amb `Hash` d'1 MB: 9,91 M nodes contra 11,45 M de la 0.13.3, així que els buckets ajuden quan la taula s'omple.
+
+**Resultat.** Contra la 0.13.3 (5+0,05, 6 simultànies): +1172 =1897 -1133 en 4.202 partides, **+3,2 ± 7,8 Elo**. És un canvi neutre en força: no perd, però tampoc es pot distingir d'un empat. Es fusiona perquè és la base de les singular extensions i de reutilitzar l'avaluació a la quiescència, i perquè ajuda quan la taula s'omple (`Hash` petit o partides llargues). El match es va aturar a 4.202 de les 5.000 previstes; el marge ja és suficient per descartar una regressió. Limitació coneguda: els buckets no estan alineats a 64 bytes, així que un bucket pot ocupar dues línies de cache.
+
 ## 0.13.3 — Pila d'acumuladors NNUE i actualització en una sola passada
 
 **Problema.** Cada `MakeMove` actualitzava els acumuladors de la NNUE peça a peça (`Add`/`Remove`, de 2 a 4 passades per jugada, cadascuna sobre les dues perspectives) i cada `UnmakeMove` havia de desfer-ho. A més, les jugades il·legals (que deixen el rei en escac) també tocaven l'acumulador abans de ser descartades.

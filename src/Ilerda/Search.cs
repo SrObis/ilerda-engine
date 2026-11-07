@@ -140,6 +140,7 @@ public sealed class Searcher
         _softMs = softMs;
         _sw.Restart();
         _halt = false;
+        _tt.NewSearch();
 
         // Moviment de reserva: el primer legal.
         BestMove = 0;
@@ -281,7 +282,8 @@ public sealed class Searcher
         ulong key = _pos.Key;
         int alpha0 = alpha;
         int ttMove = 0;
-        if (_tt.Probe(key, out int tm, out int ts, out int td, out Bound tb))
+        int ttEval = TranspositionTable.NoEval;
+        if (_tt.Probe(key, out int tm, out int ts, out ttEval, out int td, out Bound tb))
         {
             ttMove = tm;
             if (ply > 0 && td >= depth)
@@ -297,7 +299,7 @@ public sealed class Searcher
         }
 
         bool pv = beta - alpha > 1;
-        int staticEval = inCheck ? -Inf : Eval.Evaluate(_pos);
+        int staticEval = inCheck ? -Inf : ttEval != TranspositionTable.NoEval ? ttEval : Eval.Evaluate(_pos);
 
         // Reverse futility: si l'avaluació estàtica supera beta amb un bon marge a poca profunditat,
         // la posició és tan bona que es talla sense cercar. No en PV, escac ni quan busquem mats.
@@ -390,7 +392,7 @@ public sealed class Searcher
         if (stored > Mate - 100) stored += ply;
         else if (stored < -Mate + 100) stored -= ply;
         Bound bound = best >= beta ? Bound.Lower : best > alpha0 ? Bound.Exact : Bound.Upper;
-        _tt.Store(key, bestMove, stored, depth, bound);
+        _tt.Store(key, bestMove, stored, inCheck ? TranspositionTable.NoEval : Math.Clamp(staticEval, -Mate, Mate), depth, bound);
         return best;
     }
 
@@ -427,7 +429,7 @@ public sealed class Searcher
         for (int i = 0; i < n; i++)
         {
             int m = moves[i];
-            if (m == ttMove && m != 0) { scores[i] = 1_000_000; continue; }
+            if (ttMove != 0 && (m & TranspositionTable.MoveMask) == ttMove) { scores[i] = 1_000_000; continue; }
             int from = MoveGen.From(m), to = MoveGen.To(m);
             int attacker = _pos.Board[from] % 6;
             int score = 0;
