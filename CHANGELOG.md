@@ -1,5 +1,22 @@
 # Canvis
 
+## 0.13.3 — Pila d'acumuladors NNUE i actualització en una sola passada
+
+**Problema.** Cada `MakeMove` actualitzava els acumuladors de la NNUE peça a peça (`Add`/`Remove`, de 2 a 4 passades per jugada, cadascuna sobre les dues perspectives) i cada `UnmakeMove` havia de desfer-ho. A més, les jugades il·legals (que deixen el rei en escac) també tocaven l'acumulador abans de ser descartades.
+
+**Canvi.**
+
+- `Position` guarda una **pila d'acumuladors**, una entrada per jugada feta. `UnmakeMove` només baixa el punter i no recalcula res.
+- Nova `Nnue.ApplyDelta`: calcula l'acumulador nou a partir de l'anterior en una sola passada vectoritzada, `dst = src + pesos(afegides) - pesos(tretes)`, amb tres casos (jugada tranquil·la, captura, enroc).
+- Les jugades il·legals es descarten abans de tocar l'acumulador.
+- `bench 12` (un fil): 8.996.114 nodes, igual que la 0.13.2: la cerca no canvia, només la velocitat.
+- **Velocitat:** de 1,57 M a 2,35 M nodes per segon (+50 %), un fil.
+- Comprovat que l'avaluació incremental coincideix amb la recalculada des de zero, incloent-hi enroc, captura al pas i promoció amb captura.
+
+**Resultat.** Contra la 0.13.2 (5+0,05, 6 simultànies, banc `tools/obertures.epd`): +1415 =1179 -426 en 3.020 partides, **+118,1 ± 9,8 Elo**. Els dos motors gasten el mateix temps per jugada (112 ms) i la 0.13.3 arriba 0,9 plies més lluny (11,50 contra 10,60). El match es va aturar a 3.020 partides: el marge ja era suficient.
+
+Contra Stockfish limitat (10+0,1, 200 partides per nivell): 86,0 % contra el 2600, 35,2 % contra el 3000 i 17,2 % contra el 3190, unes 2.910 en aquesta escala (la 0.13.2, unes 2.870).
+
 ## 0.13.2 — Gestió del temps amb temps òptim i límit dur
 
 **Problema.** Fins a la 0.13.1 el motor tenia un sol límit per jugada (`temps restant / 30 + 3/4 de l'increment`) i el gastava gairebé sempre sencer: cada iteració de l'aprofundiment iteratiu costa 2-3 cops l'anterior, així que la darrera es tallava a mitges i aquell temps es perdia. A més, gastava el mateix temps en una jugada evident que en una de difícil.

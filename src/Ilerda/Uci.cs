@@ -3,7 +3,7 @@ namespace Ilerda;
 public static class Uci
 {
     public const string Name = "Ilerda";
-    public const string Version = "0.13.2";
+    public const string Version = "0.13.3";
     public const string Author = "Jordi Obis";
 
     static readonly object OutLock = new();
