@@ -1,5 +1,21 @@
 # Canvis
 
+## 0.13.2 — Gestió del temps amb temps òptim i límit dur
+
+**Problema.** Fins a la 0.13.1 el motor tenia un sol límit per jugada (`temps restant / 30 + 3/4 de l'increment`) i el gastava gairebé sempre sencer: cada iteració de l'aprofundiment iteratiu costa 2-3 cops l'anterior, així que la darrera es tallava a mitges i aquell temps es perdia. A més, gastava el mateix temps en una jugada evident que en una de difícil.
+
+**Canvi.**
+
+- Dos temps per jugada: un **temps òptim** (`temps restant / TmDiv + 3/4 de l'increment`) i un **límit dur** (`TmHard` % de l'òptim, mai més d'un terç del temps que queda).
+- Passat el temps òptim no s'inicia cap iteració nova. L'òptim s'escala segons l'**estabilitat de la millor jugada**: ×2,0 si acaba de canviar, ×1,4, ×1,1, ×0,9 i ×0,8 si fa 4 iteracions o més que és la mateixa. Si la puntuació cau respecte de la iteració anterior, es multiplica fins a ×1,5 (caiguda de 100 cp o més).
+- El límit dur continua aturant la cerca a mitja iteració, només en les jugades difícils.
+- Opcions UCI noves: `Tm` (1; 0 = gestió antiga), `TmDiv` (50) i `TmHard` (500).
+- `bench 12` (un fil): 8.996.114 nodes, igual que la 0.13.1: la cerca no canvia, només el repartiment del rellotge.
+
+**Afinament** (1.000 partides per configuració contra la 0.13.1, 5+0,05, banc `tools/obertures.epd`): `TmDiv` 25/35/50/70 amb límit 3× donen +43, +79, +87 i +70 Elo (amb 25 es perden 2 partides per temps); amb límit 5×, `TmDiv` 40 dona +106 i `TmDiv` 50 +122; amb límit 8×, +121. Es tria 50 i 5× (marges d'uns ±17 Elo).
+
+**Resultat.** Contra la 0.13.1 (5+0,05, 6 simultànies): +1965 =1603 -660 en 4.228 partides, **+110,9 ± 8,4 Elo**, cap partida perduda per temps. El motor gasta de mitjana 113 ms per jugada (la 0.13.1, 104) i arriba 0,17 plies més lluny. El match es va aturar a 4.228 de les 5.000 previstes; el marge ja és petit.
+
 ## 0.13.1 — Taules per material insuficient
 
 **Problema.** Revisant 5.000 partides d'autojoc, 455 de les 2.139 taules acabaven per material insuficient, i en 347 d'aquestes un dels dos motors havia vist +3 peons o més. La xarxa dona puntuacions altes a finals que són taules teòriques: rei i alfil contra rei donava +269 cp a profunditat 8.

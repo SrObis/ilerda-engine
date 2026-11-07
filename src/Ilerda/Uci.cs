@@ -3,7 +3,7 @@ namespace Ilerda;
 public static class Uci
 {
     public const string Name = "Ilerda";
-    public const string Version = "0.13.1";
+    public const string Version = "0.13.2";
     public const string Author = "Jordi Obis";
 
     static readonly object OutLock = new();
@@ -38,6 +38,7 @@ public static class Uci
         var searcher = new Searcher();
         Thread? worker = null;
         long moveOverhead = 20;
+        int tm = 1, tmDiv = 50, tmHard = 500;
 
         void StopSearch()
         {
@@ -67,6 +68,9 @@ public static class Uci
                     Send("option name LmrHist type spin default 2500 min 100 max 100000");
                     Send("option name RfpMargin type spin default 90 min 0 max 1000");
                     Send("option name FutMargin type spin default 110 min 0 max 1000");
+                    Send("option name Tm type spin default 1 min 0 max 1");
+                    Send("option name TmDiv type spin default 50 min 5 max 100");
+                    Send("option name TmHard type spin default 500 min 100 max 1000");
                     Send("option name SoftTime type spin default 100 min 10 max 100");
                     Send("option name EvalFile type string default <empty>");
                     Send("uciok");
@@ -91,6 +95,9 @@ public static class Uci
                         if (t[2].Equals("Hash", StringComparison.OrdinalIgnoreCase)) searcher.SetHash(Math.Clamp(ov, 1, 4096));
                         else if (t[2].Equals("Threads", StringComparison.OrdinalIgnoreCase)) searcher.SetThreads(ov);
                         else if (t[2].Equals("MoveOverhead", StringComparison.OrdinalIgnoreCase)) moveOverhead = Math.Clamp(ov, 0, 5000);
+                        else if (t[2].Equals("Tm", StringComparison.OrdinalIgnoreCase)) tm = Math.Clamp(ov, 0, 1);
+                        else if (t[2].Equals("TmDiv", StringComparison.OrdinalIgnoreCase)) tmDiv = Math.Clamp(ov, 5, 100);
+                        else if (t[2].Equals("TmHard", StringComparison.OrdinalIgnoreCase)) tmHard = Math.Clamp(ov, 100, 1000);
                         else searcher.SetOption(t[2], ov);
                     }
                     break;
@@ -112,7 +119,7 @@ public static class Uci
 
                 case "go":
                     StopSearch();
-                    StartSearch(pos.Clone(), t, searcher, moveOverhead, out worker);
+                    StartSearch(pos.Clone(), t, searcher, moveOverhead, tm, tmDiv, tmHard, out worker);
                     break;
 
                 case "stop":
@@ -204,7 +211,7 @@ public static class Uci
     static long ArgLong(string[] t, ref int i) =>
         i + 1 < t.Length && long.TryParse(t[i + 1], out long v) ? (i++, v).Item2 : 0;
 
-    static void StartSearch(Position pos, string[] t, Searcher searcher, long moveOverhead, out Thread worker)
+    static void StartSearch(Position pos, string[] t, Searcher searcher, long moveOverhead, int tm, int tmDiv, int tmHard, out Thread worker)
     {
         long wtime = 0, btime = 0, winc = 0, binc = 0, movetime = 0;
         int movestogo = 0, depth = 64;
@@ -225,24 +232,36 @@ public static class Uci
             }
         }
 
-        long limit = 0;
+        long limit = 0, soft = 0;
         if (movetime > 0) limit = Math.Max(1, movetime - moveOverhead);
         else if (hasTime && !infinite)
         {
             long remaining = Math.Max(0, (pos.Side == 0 ? wtime : btime) - moveOverhead);
             long inc = pos.Side == 0 ? winc : binc;
-            int divisor = movestogo > 0 ? Math.Min(movestogo, 40) : 30;
-            limit = remaining / divisor + inc * 3 / 4;
+            if (tm == 0)
+            {
+                // Gestió antiga (fins a la 0.13.1): un sol límit, que s'esgota gairebé sempre.
+                int divisor = movestogo > 0 ? Math.Min(movestogo, 40) : 30;
+                limit = remaining / divisor + inc * 3 / 4;
+            }
+            else
+            {
+                // Temps òptim (tou) i límit dur: la cerca decideix entre tots dos segons l'estabilitat.
+                int divisor = movestogo > 0 ? Math.Min(movestogo, 40) : tmDiv;
+                soft = remaining / divisor + inc * 3 / 4;
+                limit = soft * tmHard / 100;
+            }
             // Mai més d'un terç del temps que queda, i sempre un mínim perquè hi hagi jugada.
             limit = Math.Min(limit, remaining / 3);
             limit = Math.Max(limit, 5);
+            soft = Math.Min(soft, limit);
         }
 
         // Si "stop" arriba abans que el fil comenci, no es perdi: es restableix aquí, no dins de Think.
         searcher.Stop = false;
         worker = new Thread(() =>
         {
-            int best = searcher.Think(pos, depth, limit, Send);
+            int best = searcher.Think(pos, depth, limit, Send, soft);
             if (infinite)
             {
                 while (!searcher.Stop) Thread.Sleep(5);
