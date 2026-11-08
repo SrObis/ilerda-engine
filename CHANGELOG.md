@@ -1,5 +1,26 @@
 # Canvis
 
+## 0.14.1 — Syzygy DTZ a l'arrel
+
+**Problema.** La 0.14.0 sap el resultat de les posicions de fins a 6 peces, però no sap com avançar: en un final guanyat tria entre jugades que mantenen la victòria sense apropar-se a la conversió, i la partida acaba en taules per la regla dels 50 o per repetició.
+
+**Canvi.**
+
+- **Lector DTZ** (`.rtbz`), port del `tbprobe.c` de Fathom: capçalera, mapes de valors (`dtzMap`, 8 i 16 bits), bandera de bàndol i `ProbeDtz`, que dona el DTZ de qualsevol posició (amb la resolució de captures i de captures al pas del WDL). Validat amb `oracle.py`: **0 diferències de DTZ en 30.500 posicions** de 3 a 6 peces (les mateixes del WDL).
+- **Jugades de l'arrel filtrades** (`Syzygy.RootMoves`): cada jugada legal rep un rang segons el WDL/DTZ de la posició resultant i la regla dels 50. Es queden només les de millor rang: amb victòria, la de DTZ mínim; amb derrota, la que resisteix més; amb taules, les que no perden. Si en queda una, es juga sense cercar. Si manquen els fitxers DTZ, es fa servir el WDL.
+- Opció UCI `SyzygyRoot` (1 per defecte; 0 desactiva el filtre i deixa la 0.14.0).
+- Sense `SyzygyPath` el comportament és idèntic: `bench 12` fa 6.818.151 nodes.
+- Eines: `tools/syzygy/conversio.py` (autojoc des de posicions guanyades) i `tools/syzygy/finals-guanyats.epd` (1.386 finals guanyats per al bàndol que juga, de 3 a 6 peces, amb DTZ entre 10 i 100).
+
+**Resultat.** Les partides normals gairebé no arriben a finals de 6 peces o menys, així que s'ha mesurat des de `finals-guanyats.epd` (2.000 partides, 10+0,1, 6 simultànies, cada posició amb els colors canviats) contra la 0.14.0, totes dues amb taules: +1000 =606 −394, **+108,7 ± 13,0 Elo** (LOS 100 %). Qui porta el bàndol guanyador:
+
+| Bàndol guanyador | Converteix | Taules | Perd |
+|---|---|---|---|
+| 0.14.1 (DTZ) | 1000 de 1000 | 0 | 0 |
+| 0.14.0 (només WDL) | 394 de 1000 | 606 (260 per la regla dels 50, 57 per repetició) | 0 |
+
+És la mesura de la conversió dels finals guanyats, no de la força general: a les partides normals l'efecte només es veu quan s'arriba a un final de 6 peces o menys. No s'ha repetit el match de 5.000 partides normals.
+
 ## 0.14.0 — Taules Syzygy (WDL)
 
 **Problema.** Als finals amb poques peces Ilerda depèn de l'avaluació de la xarxa i de la cerca, i es perd sobretot allà (contra Stockfish, 141 de 252 derrotes acaben amb 8 peces o menys). Les taules Syzygy donen el resultat exacte de totes les posicions de fins a 6 peces.

@@ -24,6 +24,7 @@ public sealed class Searcher
     // Lazy SMP: el fil principal (_master == this) porta el temps i tria la jugada; els ajudants
     // cerquen la mateixa posició amb la taula de transposició compartida i s'aturen quan el principal acaba.
     readonly Searcher _master;
+    int[]? _rootAllowed; // jugades de l'arrel permeses per les taules Syzygy (null = totes)
     readonly int _id;
     readonly List<Searcher> _helpers = new();
     int _threads = 1;
@@ -57,6 +58,7 @@ public sealed class Searcher
     const int CorrGrain = 256, CorrSize = 16384, CorrLimit = 100;
     readonly int[,] _corr = new int[2, CorrSize];
     int _tbProbeDepth = 1;  // profunditat mínima per sondejar les taules Syzygy
+    bool _tbRoot = true;    // filtrar les jugades de l'arrel amb les taules (DTZ)
     int _tbProbeLimit = 7;  // nombre màxim de peces per sondejar
     const int TbWin = 20000; // puntuació de victòria per taules (per sota dels mats: Mate - 100)
     int _corrWeight = 100; // % de la correcció que s'aplica (0 = desactivada)
@@ -87,6 +89,7 @@ public sealed class Searcher
             case "futmargin": _futMargin = Math.Clamp(value, 0, 1000); return true;
             case "iirdepth": _iirDepth = Math.Clamp(value, 2, 1000); return true;
             case "syzygyprobedepth": _tbProbeDepth = Math.Clamp(value, 1, 100); return true;
+            case "syzygyroot": _tbRoot = value != 0; return true;
             case "syzygyprobelimit": _tbProbeLimit = Math.Clamp(value, 0, 7); return true;
             case "corrweight": _corrWeight = Math.Clamp(value, 0, 300); return true;
             case "softtime": _softTime = Math.Clamp(value, 10, 100); return true;
@@ -170,6 +173,23 @@ public sealed class Searcher
             break;
         }
         if (BestMove == 0) return 0;
+
+        // Taules Syzygy a l'arrel: només es cerquen les jugades que conserven el millor resultat (DTZ).
+        _rootAllowed = null;
+        if (Syzygy.Enabled && _tbRoot)
+        {
+            var keep = Syzygy.RootMoves(pos, _tbProbeLimit);
+            if (keep != null && keep.Length > 0)
+            {
+                _rootAllowed = keep;
+                if (keep.Length == 1)
+                {
+                    BestMove = keep[0];
+                    info?.Invoke($"info string Syzygy: jugada unica {MoveGen.ToUci(BestMove)}");
+                    return BestMove;
+                }
+            }
+        }
 
         // Fils ajudants (reutilitzats entre cerques perquè conservin la history).
         while (_helpers.Count < _threads - 1) _helpers.Add(new Searcher(_tt, _helpers.Count + 1, this));
@@ -364,6 +384,7 @@ public sealed class Searcher
         {
             PickBest(moves, scores, i, n);
             int m = moves[i];
+            if (ply == 0 && _master._rootAllowed != null && Array.IndexOf(_master._rootAllowed, m) < 0) continue;
             bool quiet = IsQuiet(m); // abans de fer la jugada
             int hist = _history[_pos.Side, MoveGen.From(m), MoveGen.To(m)];
             if (!_pos.MakeMove(m)) continue;
