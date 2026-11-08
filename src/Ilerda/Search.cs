@@ -56,6 +56,9 @@ public sealed class Searcher
     // Així la cerca compensa els errors sistemàtics de la xarxa en posicions que s'assemblen.
     const int CorrGrain = 256, CorrSize = 16384, CorrLimit = 100;
     readonly int[,] _corr = new int[2, CorrSize];
+    int _tbProbeDepth = 1;  // profunditat mínima per sondejar les taules Syzygy
+    int _tbProbeLimit = 7;  // nombre màxim de peces per sondejar
+    const int TbWin = 20000; // puntuació de victòria per taules (per sota dels mats: Mate - 100)
     int _corrWeight = 100; // % de la correcció que s'aplica (0 = desactivada)
     int _softTime = 100;  // % del límit de temps passat el qual no s'inicia una iteració nova (100 = només el límit dur)
 
@@ -83,6 +86,8 @@ public sealed class Searcher
             case "rfpmargin": _rfpMargin = Math.Clamp(value, 0, 1000); return true;
             case "futmargin": _futMargin = Math.Clamp(value, 0, 1000); return true;
             case "iirdepth": _iirDepth = Math.Clamp(value, 2, 1000); return true;
+            case "syzygyprobedepth": _tbProbeDepth = Math.Clamp(value, 1, 100); return true;
+            case "syzygyprobelimit": _tbProbeLimit = Math.Clamp(value, 0, 7); return true;
             case "corrweight": _corrWeight = Math.Clamp(value, 0, 300); return true;
             case "softtime": _softTime = Math.Clamp(value, 10, 100); return true;
             default: return false;
@@ -284,6 +289,15 @@ public sealed class Searcher
         _nodes++;
 
         if (ply > 0 && (_pos.Halfmove >= 100 || _pos.IsRepetition(ply) || _pos.InsufficientMaterial())) return 0;
+
+        // Taules de finals Syzygy: just després d'una captura o d'un moviment de peó (Halfmove 0), amb poques peces.
+        if (ply > 0 && _pos.Halfmove == 0 && Syzygy.Enabled && depth >= _tbProbeDepth && _pos.Castling == 0
+            && System.Numerics.BitOperations.PopCount(_pos.Occ) <= Math.Min(Syzygy.MaxCardinality, _tbProbeLimit)
+            && Syzygy.ProbeWdl(_pos, out Wdl tbWdl))
+        {
+            // Només la victòria i la derrota netes valen més que unes taules; les "maleïdes" són taules per la regla dels 50.
+            return tbWdl == Wdl.Win ? TbWin - ply : tbWdl == Wdl.Loss ? -TbWin + ply : 0;
+        }
 
         bool inCheck = _pos.InCheck();
         if (inCheck && ply < 60) depth++;
