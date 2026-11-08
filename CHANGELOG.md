@@ -1,5 +1,21 @@
 # Canvis
 
+## 0.14.0 — Taules Syzygy (WDL)
+
+**Problema.** Als finals amb poques peces Ilerda depèn de l'avaluació de la xarxa i de la cerca, i es perd sobretot allà (contra Stockfish, 141 de 252 derrotes acaben amb 8 peces o menys). Les taules Syzygy donen el resultat exacte de totes les posicions de fins a 6 peces.
+
+**Canvi.**
+
+- Nou lector de taules `.rtbw` (WDL), port a C# del `tbprobe.c` de [Fathom](https://github.com/jdart1/Fathom) (MIT; vegeu `THIRD-PARTY-NOTICES.md`): clau de material, codificació d'índexs, descompressió per parells, fitxers mapats a memòria i inicialització tardana de cada taula amb bloqueig. Les constants estan generades per `tools/syzygy/gen_taules.py` (`SyzygyTables.cs`).
+- Opcions UCI: `SyzygyPath` (carpetes separades per `;`), `SyzygyProbeDepth` (1 per defecte) i `SyzygyProbeLimit` (7 per defecte, limitat pel màxim de peces de les taules trobades).
+- A `Negamax`, si no hi ha enroc, el comptador de 50 jugades és 0 i hi ha prou poques peces, la posició retorna la puntuació de la taula: victòria `+(20000 - ply)`, derrota `-(20000 - ply)`, taules 0 (sota el llindar de mat). Les victòries i derrotes "maleïdes" (per la regla dels 50) compten com a taules.
+- Ordres de diagnòstic `tbprobe` i `tbcheck <fitxer>`. Sense `SyzygyPath` el comportament és idèntic: `bench 12` fa 6.818.151 nodes, igual que la 0.13.7.
+- Encara no hi ha DTZ: a l'arrel no es filtren jugades, així que en un final guanyat el motor pot no avançar cap a la conversió. Això és la 0.14.1.
+
+**Validació.** `tools/syzygy/oracle.py` genera posicions aleatòries amb python-chess (GPL-3, usat només com a programa extern) i s'hi compara el WDL: **0 diferències en 30.500 posicions** de 3 a 6 peces.
+
+**Resultat.** 5.000 partides contra la 0.13.7 amb les taules activades (5+0,05, 6 simultànies): +1204 =2581 -1215, **-0,8 ± 6,7 Elo** (LOS 41,2 %). Empat tècnic, com s'esperava: el WDL sol no ensenya a convertir un final guanyat, només evita errors a la cerca. Stockfish limitat no usa taules, així que no s'hi ha tornat a calibrar.
+
 ## 0.13.7 — Correcció de l'avaluació estàtica per estructura de peons
 
 **Problema.** Analitzant les derrotes contra Stockfish, Ilerda avalua més optimista que ell, i més a mesura que queden menys peces (de +0,9 peons amb 25-32 peces a +2,6 o més amb 8 o menys). La xarxa és petita (768 → 256 → 1) i la cerca confiava en la seva avaluació sense cap correcció.

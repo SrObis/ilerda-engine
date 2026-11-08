@@ -8,7 +8,8 @@ Els números de línia són els de `tbprobe.c` (2.715 línies) al moment d'escri
 - [x] Avisos de llicència i capçalera de `Syzygy.cs`.
 - [x] Esquelet: `Syzygy.Init` troba els fitxers `.rtbw`/`.rtbz` i dedueix el màxim de peces; `ProbeWdl` retorna sempre `false`.
 - [x] `oracle.py`: posicions aleatòries d'un material amb el WDL/DTZ de python-chess, per comparar.
-- [ ] Fases 1-6 següents.
+- [x] Fases 1-6 (fitxers, índexs, codificació, descompressió, sondeig WDL, integració): validades amb `oracle.py`, 0 diferències en 30.500 posicions (v0.14.0).
+- [ ] Fase 7: DTZ (v0.14.1).
 
 ## Fases (per ordre)
 

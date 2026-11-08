@@ -3,7 +3,7 @@ namespace Ilerda;
 public static class Uci
 {
     public const string Name = "Ilerda";
-    public const string Version = "0.13.7";
+    public const string Version = "0.14.0";
     public const string Author = "Jordi Obis";
 
     static readonly object OutLock = new();
@@ -76,6 +76,8 @@ public static class Uci
                     Send("option name SoftTime type spin default 100 min 10 max 100");
                     Send("option name EvalFile type string default <empty>");
                     Send("option name SyzygyPath type string default <empty>");
+                    Send("option name SyzygyProbeDepth type spin default 1 min 1 max 100");
+                    Send("option name SyzygyProbeLimit type spin default 7 min 0 max 7");
                     Send("uciok");
                     break;
 
