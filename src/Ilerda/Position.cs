@@ -157,6 +157,25 @@ public sealed class Position
         return false;
     }
 
+    /// <summary>
+    /// Repetició dins de la cerca. <paramref name="ply"/> és la distància a l'arrel. Una posició que ja s'ha vist
+    /// dins de l'arbre de cerca (arrel inclosa) compta com a taules a la primera repetició, perquè l'altre bàndol
+    /// pot repetir-la; una de la partida anterior a l'arrel només si ja s'havia vist dues vegades (triple repetició),
+    /// perquè l'adversari no està obligat a repetir i la primera repetició no és cap taula assegurada.
+    /// </summary>
+    public bool IsRepetition(int ply)
+    {
+        int lowest = Math.Max(0, _histCount - Halfmove);
+        int seen = 0;
+        for (int i = _histCount - 2; i >= lowest; i -= 2)
+        {
+            if (_keyHist[i] != Key) continue;
+            if (i >= _histCount - ply) return true;
+            if (++seen >= 2) return true;
+        }
+        return false;
+    }
+
     void AddPiece(int sq, int piece)
     {
         Key ^= ZPiece[piece, sq];

@@ -1,5 +1,125 @@
 # Canvis
 
+## 0.14.2 — Extensions singulars
+
+**Problema.** Quan la jugada de la taula de transposició és molt millor que totes les altres, la cerca li dedica la mateixa profunditat que a qualsevol jugada. Les jugades forçades (una sola resposta bona) es veuen massa tard.
+
+**Canvi.**
+
+- **Extensió singular.** En un node amb profunditat ≥ `SingDepth` (8) la jugada de la taula, si la seva entrada és de cota inferior o exacta i d'almenys `profunditat - 3`, es verifica: es cerca la mateixa posició **sense ella**, a profunditat `(profunditat - 1) / 2` i amb finestra nul·la al voltant de `puntuació de la taula - profunditat * SingMargin / 16` (marge 32, és a dir, 2 cp per nivell). Si totes les altres jugades queden per sota, la jugada de la taula és *singular* i s'allarga un nivell.
+- **Multi-cut.** Si, fins i tot sense la jugada de la taula, es supera beta, el node es talla amb aquella cota.
+- La cerca de verificació usa una jugada exclosa per ply: no consulta ni guarda a la taula de transposició, no aprèn la correcció d'avaluació i, si no queda cap jugada legal, retorna fallada baixa.
+- Opcions UCI `SingDepth` (8; 1000 la desactiva) i `SingMargin` (32). Amb `SingDepth 1000`, `bench 12` fa 6.818.151 nodes, igual que la 0.14.1; amb el valor per defecte en fa 11.149.241 (+64 % per arribar a la mateixa profunditat, com passa amb les extensions).
+
+**Resultat.** 5.000 partides contra la 0.14.1 (5+0,05, 6 simultànies, sense taules): +1410 =2518 −1072, 53,4 %, **+23,5 ± 6,8 Elo** (LOS 100 %). Durant el match va fluctuar entre +29 (2.143 partides) i +25 (4.416). Com sempre en autojoc, el guany contra un adversari extern serà menor.
+
+Contra Stockfish limitat (200 partides per nivell, 10+0,1, sense taules):
+
+| Stockfish | 0.13.7 | 0.14.2 |
+|---|---|---|
+| 2600 | 91,2 % (saturat) | 86,2 % (+168 =9 -23, ≈2919, gairebé saturat) |
+| 3000 | 38,0 % (≈2915) | 39,2 % (+39 =79 -82, ≈2924) |
+| 3190 | 21,2 % (≈2962) | 22,8 % (+13 =65 -122, ≈2978) |
+
+Mitjana dels dos nivells fiables: ≈2951 (≈2938 la 0.13.7), uns +8 Elo, dins del marge de ±40 de cada nivell. Les 227 derrotes: 119 (52 %) acaben amb 8 peces o menys, en 166 (73 %) Ilerda va arribar a veure +1,0 o més i en 112 (49 %) +2,0 o més; cap jugada a profunditat 64. De les 93 derrotes que arriben a 6 peces o menys, en les 93 la posició ja estava perduda en entrar-hi segons les taules, i de les 103 taules que hi arriben cap era una victòria teòrica: les taules no haurien canviat aquest resultat.
+
+## 0.14.1 — Syzygy DTZ a l'arrel
+
+**Problema.** La 0.14.0 sap el resultat de les posicions de fins a 6 peces, però no sap com avançar: en un final guanyat tria entre jugades que mantenen la victòria sense apropar-se a la conversió, i la partida acaba en taules per la regla dels 50 o per repetició.
+
+**Canvi.**
+
+- **Lector DTZ** (`.rtbz`), port del `tbprobe.c` de Fathom: capçalera, mapes de valors (`dtzMap`, 8 i 16 bits), bandera de bàndol i `ProbeDtz`, que dona el DTZ de qualsevol posició (amb la resolució de captures i de captures al pas del WDL). Validat amb `oracle.py`: **0 diferències de DTZ en 30.500 posicions** de 3 a 6 peces (les mateixes del WDL).
+- **Jugades de l'arrel filtrades** (`Syzygy.RootMoves`): cada jugada legal rep un rang segons el WDL/DTZ de la posició resultant i la regla dels 50. Es queden només les de millor rang: amb victòria, la de DTZ mínim; amb derrota, la que resisteix més; amb taules, les que no perden. Si en queda una, es juga sense cercar. Si manquen els fitxers DTZ, es fa servir el WDL.
+- Opció UCI `SyzygyRoot` (1 per defecte; 0 desactiva el filtre i deixa la 0.14.0).
+- Sense `SyzygyPath` el comportament és idèntic: `bench 12` fa 6.818.151 nodes.
+- Eines: `tools/syzygy/conversio.py` (autojoc des de posicions guanyades) i `tools/syzygy/finals-guanyats.epd` (1.386 finals guanyats per al bàndol que juga, de 3 a 6 peces, amb DTZ entre 10 i 100).
+
+**Resultat.** Les partides normals gairebé no arriben a finals de 6 peces o menys, així que s'ha mesurat des de `finals-guanyats.epd` (2.000 partides, 10+0,1, 6 simultànies, cada posició amb els colors canviats) contra la 0.14.0, totes dues amb taules: +1000 =606 −394, **+108,7 ± 13,0 Elo** (LOS 100 %). Qui porta el bàndol guanyador:
+
+| Bàndol guanyador | Converteix | Taules | Perd |
+|---|---|---|---|
+| 0.14.1 (DTZ) | 1000 de 1000 | 0 | 0 |
+| 0.14.0 (només WDL) | 394 de 1000 | 606 (260 per la regla dels 50, 57 per repetició) | 0 |
+
+És la mesura de la conversió dels finals guanyats, no de la força general: a les partides normals l'efecte només es veu quan s'arriba a un final de 6 peces o menys. No s'ha repetit el match de 5.000 partides normals.
+
+## 0.14.0 — Taules Syzygy (WDL)
+
+**Problema.** Als finals amb poques peces Ilerda depèn de l'avaluació de la xarxa i de la cerca, i es perd sobretot allà (contra Stockfish, 141 de 252 derrotes acaben amb 8 peces o menys). Les taules Syzygy donen el resultat exacte de totes les posicions de fins a 6 peces.
+
+**Canvi.**
+
+- Nou lector de taules `.rtbw` (WDL), port a C# del `tbprobe.c` de [Fathom](https://github.com/jdart1/Fathom) (MIT; vegeu `THIRD-PARTY-NOTICES.md`): clau de material, codificació d'índexs, descompressió per parells, fitxers mapats a memòria i inicialització tardana de cada taula amb bloqueig. Les constants estan generades per `tools/syzygy/gen_taules.py` (`SyzygyTables.cs`).
+- Opcions UCI: `SyzygyPath` (carpetes separades per `;`), `SyzygyProbeDepth` (1 per defecte) i `SyzygyProbeLimit` (7 per defecte, limitat pel màxim de peces de les taules trobades).
+- A `Negamax`, si no hi ha enroc, el comptador de 50 jugades és 0 i hi ha prou poques peces, la posició retorna la puntuació de la taula: victòria `+(20000 - ply)`, derrota `-(20000 - ply)`, taules 0 (sota el llindar de mat). Les victòries i derrotes "maleïdes" (per la regla dels 50) compten com a taules.
+- Ordres de diagnòstic `tbprobe` i `tbcheck <fitxer>`. Sense `SyzygyPath` el comportament és idèntic: `bench 12` fa 6.818.151 nodes, igual que la 0.13.7.
+- Encara no hi ha DTZ: a l'arrel no es filtren jugades, així que en un final guanyat el motor pot no avançar cap a la conversió. Això és la 0.14.1.
+
+**Validació.** `tools/syzygy/oracle.py` genera posicions aleatòries amb python-chess (GPL-3, usat només com a programa extern) i s'hi compara el WDL: **0 diferències en 30.500 posicions** de 3 a 6 peces.
+
+**Resultat.** 5.000 partides contra la 0.13.7 amb les taules activades (5+0,05, 6 simultànies): +1204 =2581 -1215, **-0,8 ± 6,7 Elo** (LOS 41,2 %). Empat tècnic, com s'esperava: el WDL sol no ensenya a convertir un final guanyat, només evita errors a la cerca. Stockfish limitat no usa taules, així que no s'hi ha tornat a calibrar.
+
+## 0.13.7 — Correcció de l'avaluació estàtica per estructura de peons
+
+**Problema.** Analitzant les derrotes contra Stockfish, Ilerda avalua més optimista que ell, i més a mesura que queden menys peces (de +0,9 peons amb 25-32 peces a +2,6 o més amb 8 o menys). La xarxa és petita (768 → 256 → 1) i la cerca confiava en la seva avaluació sense cap correcció.
+
+**Canvi.**
+
+- **Taula de correcció** per bàndol i per estructura de peons (hash dels peons de les dues bandes, 16.384 entrades). Cada entrada és una mitjana mòbil de `puntuació de la cerca - avaluació de la xarxa` (màxim ±100 cp, pes `min(profunditat + 1, 16)/256`). L'avaluació estàtica que usen la poda per marge, el null move i la futilitat és `avaluació + correcció`.
+- Només s'aprèn en nodes sense escac, sense puntuacions de mat, quan la millor jugada no és una captura i la cota és coherent amb el signe de l'error.
+- A la taula de transposició es guarda l'avaluació **sense** corregir, perquè no es corregeixi dues vegades. Les taules són per fil i es buiden a `ucinewgame`.
+- Opció UCI `CorrWeight` (100 per defecte; 0 la desactiva i la cerca queda idèntica a la 0.13.6).
+- `bench 12` (un fil): 6.818.151 nodes (abans 6.990.007), uns 2,01 M nodes per segon. Amb `CorrWeight` 0: 6.990.007 nodes, com la 0.13.6.
+
+**Resultat.** 5.000 partides contra la 0.13.6 (5+0,05, 6 simultànies): +1292 =2509 −1199, 50,9 %, **+6,5 ± 6,8 Elo** (LOS 96,9 %). Guany petit però positiu; contra Stockfish limitat (200 partides per nivell, 10+0,1):
+
+| Stockfish | 0.13.6 | 0.13.7 |
+|---|---|---|
+| 3000 | −119 (≈2881) | −85 (≈2915) |
+| 3190 | −261 (≈2930) | −228 (≈2962) |
+
+Contra 2600 fa 177-12-11 (91 %), massa a prop del límit per fiar-se'n. Uns +30 Elo a l'escala de Stockfish, dins del marge de ±40 de cada nivell però en la mateixa direcció en tots.
+
+## 0.13.6 — Triple repetició per a les posicions anteriors a l'arrel
+
+**Problema.** Analitzant les 255 derrotes contra Stockfish de la 0.13.3, en 613 jugades d'Ilerda la cerca arribava a profunditat 64 en 4 ms amb avaluació 0,00, sense ser jugades forçades. Reproduït: a una posició d'una partida perduda (rei sol contra torre, alfil i peó) la cerca donava 0,00 amb l'historial de la partida i -19 peons des de zero. `IsRepetition` donava per taules qualsevol posició ja vista una vegada, també anterior a l'arrel; així que, quan el bàndol perdent movia el rei i tornava a una posició de la partida, la cerca puntuava aquella jugada 0 a l'instant, sense mirar què feia l'adversari, que no està obligat a repetir.
+
+**Canvi.**
+
+- Nova `Position.IsRepetition(ply)`: una posició ja vista **dins de l'arbre de cerca** (arrel inclosa) compta com a taules a la primera repetició; una de la partida **anterior a l'arrel** només si ja s'havia vist dues vegades (triple repetició), com fan els motors forts.
+- `DataGen` conserva la funció antiga, perquè la generació de dades no canviï.
+- `bench 12` (un fil): 6.990.007 nodes, igual que la 0.13.5: des de zero no hi ha historial, així que la cerca no canvia. A la posició de l'exemple, de 0,00 a -22,9 peons.
+
+**Resultat.** L'autojoc no hi serveix: les dues versions comparteixen la mateixa manera de mirar l'historial, i el defecte només es veu contra un adversari que no repeteix. Contra Stockfish limitat (10+0,1, 200 partides per nivell): 84,5 % al 2600, 33,5 % al 3000 i 18,2 % al 3190, unes **2.900** de mitjana, igual que la 0.13.5 (≈2.903) dins del marge. Les jugades amb profunditat 64 en 4 ms (el símptoma) baixen de 785 a 327 en 600 partides, però les partides perdudes es queden igual (251 contra 252): és una correcció de comportament que no mou la puntuació mesurable. La resta de les 327 són finals tablejats o repeticions dins de l'arbre, que continuen sent taules legítimes.
+
+## 0.13.5 — Reducció iterativa interna i taula de transposició a la quiescència
+
+**Problema.** Quan una posició no tenia jugada a la taula, la cerca la tractava igual que les altres encara que l'ordenació fos dolenta. I la quiescència no consultava la taula: tornava a avaluar i a recórrer captures de posicions ja vistes.
+
+**Canvi.**
+
+- **IIR (*internal iterative reduction*):** a profunditat 4 o més, si la taula no dona cap jugada, es cerca un nivell menys; la iteració següent ja la trobarà. Opció UCI `IirDepth` (4 per defecte; 1000 la desactiva).
+- **Quiescència amb taula de transposició:** fora de PV una entrada de qualsevol profunditat talla la cerca; l'avaluació estàtica guardada s'usa en lloc de recalcular-la; els resultats es guarden amb profunditat 0 i la millor captura, que també s'usa per ordenar.
+- `bench 12` (un fil): 6.990.007 nodes (abans 9.868.027, -29 %) a uns 2,02 M nodes per segon (abans 2,26 M, -11 %), és a dir, un 21 % menys de temps fins a la mateixa profunditat. Només la taula a la quiescència: 7.968.275 nodes; l'IIR en treu un 12 % més.
+
+**Resultat.** Contra la 0.13.4 (5+0,05, 6 simultànies): +1503 =2179 -1318 en 5.000 partides, **+12,9 ± 7,2 Elo**. Cap partida perduda per temps. **Contra Stockfish limitat** (10+0,1, 200 partides per nivell): 83,8 % al 2600, 34,8 % al 3000 i 18,5 % al 3190, unes **2.900** de mitjana, igual que la 0.13.3 dins del marge: la millora d'autojoc no es veu contra un adversari extern.
+
+## 0.13.4 — Taula de transposició amb buckets, edat i avaluació estàtica
+
+**Problema.** La taula tenia una sola entrada per posició: una col·lisió n'esborrava l'anterior, les entrades de cerques velles ocupaven lloc per sempre (sense edat) i no es guardava l'avaluació estàtica, de manera que `Eval.Evaluate` es calculava a cada node encara que la posició ja s'hagués vist.
+
+**Canvi.**
+
+- **Buckets de 4 entrades** (64 bytes). Una posició pot anar a qualsevol de les 4; el reemplaç tria la lliure o la de menys valor.
+- **Edat** de 5 bits, que puja a cada cerca (`go`). El valor d'una entrada és `profunditat - 8 × cerques d'antiguitat`: les velles es reemplacen abans.
+- **Avaluació estàtica** (16 bits) a cada entrada; Negamax la reutilitza i només crida `Eval.Evaluate` si no hi és (mai en escac).
+- La jugada es guarda en 16 bits (des de, a, promoció) i l'indicador (enroc, al pas) es recupera en comparar amb les jugades generades.
+- Mateix esquema sense bloquejos per a Lazy SMP (`Check = clau ^ Data`). No hi ha opcions UCI noves.
+- `bench 12` (un fil): 9.868.027 nodes (abans 8.996.114) i uns 2,31 M nodes per segon (abans 2,23 M). Amb `Hash` d'1 MB: 9,91 M nodes contra 11,45 M de la 0.13.3, així que els buckets ajuden quan la taula s'omple.
+
+**Resultat.** Contra la 0.13.3 (5+0,05, 6 simultànies): +1172 =1897 -1133 en 4.202 partides, **+3,2 ± 7,8 Elo**. És un canvi neutre en força: no perd, però tampoc es pot distingir d'un empat. Es fusiona perquè és la base de les singular extensions i de reutilitzar l'avaluació a la quiescència, i perquè ajuda quan la taula s'omple (`Hash` petit o partides llargues). El match es va aturar a 4.202 de les 5.000 previstes; el marge ja és suficient per descartar una regressió. Limitació coneguda: els buckets no estan alineats a 64 bytes, així que un bucket pot ocupar dues línies de cache.
+
 ## 0.13.3 — Pila d'acumuladors NNUE i actualització en una sola passada
 
 **Problema.** Cada `MakeMove` actualitzava els acumuladors de la NNUE peça a peça (`Add`/`Remove`, de 2 a 4 passades per jugada, cadascuna sobre les dues perspectives) i cada `UnmakeMove` havia de desfer-ho. A més, les jugades il·legals (que deixen el rei en escac) també tocaven l'acumulador abans de ser descartades.
