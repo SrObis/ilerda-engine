@@ -1,5 +1,26 @@
 # Canvis
 
+## 0.13.7 — Correcció de l'avaluació estàtica per estructura de peons
+
+**Problema.** Analitzant les derrotes contra Stockfish, Ilerda avalua més optimista que ell, i més a mesura que queden menys peces (de +0,9 peons amb 25-32 peces a +2,6 o més amb 8 o menys). La xarxa és petita (768 → 256 → 1) i la cerca confiava en la seva avaluació sense cap correcció.
+
+**Canvi.**
+
+- **Taula de correcció** per bàndol i per estructura de peons (hash dels peons de les dues bandes, 16.384 entrades). Cada entrada és una mitjana mòbil de `puntuació de la cerca - avaluació de la xarxa` (màxim ±100 cp, pes `min(profunditat + 1, 16)/256`). L'avaluació estàtica que usen la poda per marge, el null move i la futilitat és `avaluació + correcció`.
+- Només s'aprèn en nodes sense escac, sense puntuacions de mat, quan la millor jugada no és una captura i la cota és coherent amb el signe de l'error.
+- A la taula de transposició es guarda l'avaluació **sense** corregir, perquè no es corregeixi dues vegades. Les taules són per fil i es buiden a `ucinewgame`.
+- Opció UCI `CorrWeight` (100 per defecte; 0 la desactiva i la cerca queda idèntica a la 0.13.6).
+- `bench 12` (un fil): 6.818.151 nodes (abans 6.990.007), uns 2,01 M nodes per segon. Amb `CorrWeight` 0: 6.990.007 nodes, com la 0.13.6.
+
+**Resultat.** 5.000 partides contra la 0.13.6 (5+0,05, 6 simultànies): +1292 =2509 −1199, 50,9 %, **+6,5 ± 6,8 Elo** (LOS 96,9 %). Guany petit però positiu; contra Stockfish limitat (200 partides per nivell, 10+0,1):
+
+| Stockfish | 0.13.6 | 0.13.7 |
+|---|---|---|
+| 3000 | −119 (≈2881) | −85 (≈2915) |
+| 3190 | −261 (≈2930) | −228 (≈2962) |
+
+Contra 2600 fa 177-12-11 (91 %), massa a prop del límit per fiar-se'n. Uns +30 Elo a l'escala de Stockfish, dins del marge de ±40 de cada nivell però en la mateixa direcció en tots.
+
 ## 0.13.6 — Triple repetició per a les posicions anteriors a l'arrel
 
 **Problema.** Analitzant les 255 derrotes contra Stockfish de la 0.13.3, en 613 jugades d'Ilerda la cerca arribava a profunditat 64 en 4 ms amb avaluació 0,00, sense ser jugades forçades. Reproduït: a una posició d'una partida perduda (rei sol contra torre, alfil i peó) la cerca donava 0,00 amb l'historial de la partida i -19 peons des de zero. `IsRepetition` donava per taules qualsevol posició ja vista una vegada, també anterior a l'arrel; així que, quan el bàndol perdent movia el rei i tornava a una posició de la partida, la cerca puntuava aquella jugada 0 a l'instant, sense mirar què feia l'adversari, que no està obligat a repetir.

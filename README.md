@@ -2,7 +2,7 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda és el nom romà de Lleida).
 
-**Estat:** v0.13.6 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, reducció iterativa interna (IIR), LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa). Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.13.7 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, reducció iterativa interna (IIR), LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa). Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
@@ -108,6 +108,16 @@ I amb la **v0.13.5** (mateixes condicions):
 | 3190 (el màxim) | +12 =50 -138 | 18,5 % | -258 ± 47 | ≈2932 |
 
 La mitjana dels tres nivells és d'unes **2.900**, igual que la 0.13.3 (≈2.910) dins del marge (uns ±30 de mitjana). Contra la 0.13.4 la 0.13.5 guanya +12,9 ± 7,2 Elo en autojoc, però contra Stockfish no es veu: l'autojoc exagera les millores, i aquesta, que és de cerca, no n'és l'excepció. De 600 partides se'n perden 252 (255 amb la 0.13.3): 141 acaben amb 8 peces o menys i en 187 Ilerda havia arribat a veure +1,0 o més, és a dir, es perd sobretot als finals i després d'avaluar-los massa bé.
+
+I amb la **v0.13.7** (correcció de l'avaluació; mateixes condicions):
+
+| Stockfish (`UCI_Elo`) | Resultat | Puntuació | Diferència | Estimació |
+|---|---|---|---|---|
+| 2600 | +177 =11 -12 | 91,2 % | +407 ± 82 | (massa a prop del límit) |
+| 3000 | +30 =92 -78 | 38,0 % | -85 ± 36 | ≈2915 |
+| 3190 (el màxim) | +10 =65 -125 | 21,2 % | -228 ± 43 | ≈2962 |
+
+Uns **+30 Elo** respecte de la 0.13.6 (≈2.881 i ≈2.930 als dos nivells fiables), en la mateixa direcció en tots els nivells, i +6,5 ± 6,8 en 5.000 partides directes.
 
 Mitjana d'unes **2.910**, uns **+35 Elo** per sobre de la 0.13.2 contra un adversari extern (contra la 0.13.2 directament, +118). Els marges de cada nivell són grans (±40–70), així que la diferència entre versions és orientativa.
 
