@@ -1,5 +1,28 @@
 # Canvis
 
+## 0.14.2 — Extensions singulars
+
+**Problema.** Quan la jugada de la taula de transposició és molt millor que totes les altres, la cerca li dedica la mateixa profunditat que a qualsevol jugada. Les jugades forçades (una sola resposta bona) es veuen massa tard.
+
+**Canvi.**
+
+- **Extensió singular.** En un node amb profunditat ≥ `SingDepth` (8) la jugada de la taula, si la seva entrada és de cota inferior o exacta i d'almenys `profunditat - 3`, es verifica: es cerca la mateixa posició **sense ella**, a profunditat `(profunditat - 1) / 2` i amb finestra nul·la al voltant de `puntuació de la taula - profunditat * SingMargin / 16` (marge 32, és a dir, 2 cp per nivell). Si totes les altres jugades queden per sota, la jugada de la taula és *singular* i s'allarga un nivell.
+- **Multi-cut.** Si, fins i tot sense la jugada de la taula, es supera beta, el node es talla amb aquella cota.
+- La cerca de verificació usa una jugada exclosa per ply: no consulta ni guarda a la taula de transposició, no aprèn la correcció d'avaluació i, si no queda cap jugada legal, retorna fallada baixa.
+- Opcions UCI `SingDepth` (8; 1000 la desactiva) i `SingMargin` (32). Amb `SingDepth 1000`, `bench 12` fa 6.818.151 nodes, igual que la 0.14.1; amb el valor per defecte en fa 11.149.241 (+64 % per arribar a la mateixa profunditat, com passa amb les extensions).
+
+**Resultat.** 5.000 partides contra la 0.14.1 (5+0,05, 6 simultànies, sense taules): +1410 =2518 −1072, 53,4 %, **+23,5 ± 6,8 Elo** (LOS 100 %). Durant el match va fluctuar entre +29 (2.143 partides) i +25 (4.416). Com sempre en autojoc, el guany contra un adversari extern serà menor.
+
+Contra Stockfish limitat (200 partides per nivell, 10+0,1, sense taules):
+
+| Stockfish | 0.13.7 | 0.14.2 |
+|---|---|---|
+| 2600 | 91,2 % (saturat) | 86,2 % (+168 =9 -23, ≈2919, gairebé saturat) |
+| 3000 | 38,0 % (≈2915) | 39,2 % (+39 =79 -82, ≈2924) |
+| 3190 | 21,2 % (≈2962) | 22,8 % (+13 =65 -122, ≈2978) |
+
+Mitjana dels dos nivells fiables: ≈2951 (≈2938 la 0.13.7), uns +8 Elo, dins del marge de ±40 de cada nivell. Les 227 derrotes: 119 (52 %) acaben amb 8 peces o menys, en 166 (73 %) Ilerda va arribar a veure +1,0 o més i en 112 (49 %) +2,0 o més; cap jugada a profunditat 64. De les 93 derrotes que arriben a 6 peces o menys, en les 93 la posició ja estava perduda en entrar-hi segons les taules, i de les 103 taules que hi arriben cap era una victòria teòrica: les taules no haurien canviat aquest resultat.
+
 ## 0.14.1 — Syzygy DTZ a l'arrel
 
 **Problema.** La 0.14.0 sap el resultat de les posicions de fins a 6 peces, però no sap com avançar: en un final guanyat tria entre jugades que mantenen la victòria sense apropar-se a la conversió, i la partida acaba en taules per la regla dels 50 o per repetició.

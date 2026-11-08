@@ -51,6 +51,9 @@ public sealed class Searcher
 
     int _rfpMargin = 90;  // marge de reverse futility per nivell de profunditat (1000 = pràcticament desactivada)
     int _futMargin = 110; // marge de futility per nivell de profunditat
+    int _singDepth = 8;   // profunditat mínima de l'extensió singular (1000 = desactivada)
+    int _singMargin = 32; // marge de la cerca singular, en 1/16 de cp per nivell de profunditat
+    readonly int[] _excl = new int[128]; // jugada exclosa a cada ply (cerca de verificació singular)
     int _iirDepth = 4;    // profunditat mínima de la reducció iterativa interna (1000 = desactivada)
     // Correcció de l'avaluació estàtica: per a cada estructura de peons es manté una mitjana mòbil de
     // (puntuació de la cerca - avaluació de la xarxa), en 1/CorrGrain de centipeó, i s'afegeix a l'avaluació.
@@ -87,6 +90,8 @@ public sealed class Searcher
             case "lmrhist": _lmrHist = Math.Clamp(value, 100, 100000); return true;
             case "rfpmargin": _rfpMargin = Math.Clamp(value, 0, 1000); return true;
             case "futmargin": _futMargin = Math.Clamp(value, 0, 1000); return true;
+            case "singdepth": _singDepth = Math.Clamp(value, 2, 1000); return true;
+            case "singmargin": _singMargin = Math.Clamp(value, 0, 512); return true;
             case "iirdepth": _iirDepth = Math.Clamp(value, 2, 1000); return true;
             case "syzygyprobedepth": _tbProbeDepth = Math.Clamp(value, 1, 100); return true;
             case "syzygyroot": _tbRoot = value != 0; return true;
@@ -327,15 +332,19 @@ public sealed class Searcher
         int alpha0 = alpha;
         int ttMove = 0;
         int ttEval = TranspositionTable.NoEval;
+        int excl = _excl[ply];
+        bool ttHit = false;
+        int ttScore = 0, ttDepth = 0;
+        Bound ttBound = Bound.Upper;
         if (_tt.Probe(key, out int tm, out int ts, out ttEval, out int td, out Bound tb))
         {
             ttMove = tm;
-            if (ply > 0 && td >= depth)
+            // Les puntuacions de mat es guarden relatives a la posició, no a l'arrel.
+            if (ts > Mate - 100) ts -= ply;
+            else if (ts < -Mate + 100) ts += ply;
+            ttHit = true; ttScore = ts; ttDepth = td; ttBound = tb;
+            if (ply > 0 && td >= depth && excl == 0)
             {
-                // Les puntuacions de mat es guarden relatives a la posició, no a l'arrel.
-                if (ts > Mate - 100) ts -= ply;
-                else if (ts < -Mate + 100) ts += ply;
-
                 if (tb == Bound.Exact) return ts;
                 if (tb == Bound.Lower && ts >= beta) return ts;
                 if (tb == Bound.Upper && ts <= alpha) return ts;
@@ -384,9 +393,26 @@ public sealed class Searcher
         {
             PickBest(moves, scores, i, n);
             int m = moves[i];
+            if (m == excl) continue;
             if (ply == 0 && _master._rootAllowed != null && Array.IndexOf(_master._rootAllowed, m) < 0) continue;
             bool quiet = IsQuiet(m); // abans de fer la jugada
             int hist = _history[_pos.Side, MoveGen.From(m), MoveGen.To(m)];
+            // Extensió singular: si la jugada de la taula és molt millor que totes les altres (la cerca a
+            // profunditat reduïda sense ella queda per sota d'un llindar), s'allarga un nivell. Si fins i tot
+            // sense ella es supera beta, la posició es poda (multi-cut).
+            int ext = 0;
+            if (ply > 0 && excl == 0 && m == ttMove && ttHit && depth >= _singDepth && ttDepth >= depth - 3
+                && ttBound != Bound.Upper && Math.Abs(ttScore) < Mate - 100)
+            {
+                int sBeta = ttScore - depth * _singMargin / 16;
+                _excl[ply] = m;
+                int ss = Negamax((depth - 1) / 2, sBeta - 1, sBeta, ply, false);
+                _excl[ply] = 0;
+                if (_stopped) return 0;
+                if (ss < sBeta) ext = 1;
+                else if (sBeta >= beta) return sBeta;
+            }
+
             if (!_pos.MakeMove(m)) continue;
             legal++;
 
@@ -402,7 +428,7 @@ public sealed class Searcher
             // PVS: la primera jugada es cerca amb finestra completa; la resta amb finestra nul·la
             // (amb LMR si cal) i només es repeteixen amb finestra completa si superen alfa en un node PV.
             int score;
-            if (legal == 1) score = -Negamax(depth - 1, -beta, -alpha, ply + 1);
+            if (legal == 1) score = -Negamax(depth - 1 + ext, -beta, -alpha, ply + 1);
             else
             {
                 bool reduce = quiet && depth >= 3 && legal >= _lmrStart && ply > 0 && !inCheck
@@ -414,9 +440,9 @@ public sealed class Searcher
                     r = _lmr[Math.Min(depth, 63), Math.Min(legal, 63)] - hist / _lmrHist;
                     r = Math.Min(r, depth - 2);
                 }
-                score = r > 0 ? -Negamax(depth - 1 - r, -alpha - 1, -alpha, ply + 1) : alpha + 1;
-                if (score > alpha) score = -Negamax(depth - 1, -alpha - 1, -alpha, ply + 1);
-                if (pv && score > alpha && score < beta) score = -Negamax(depth - 1, -beta, -alpha, ply + 1);
+                score = r > 0 ? -Negamax(depth - 1 + ext - r, -alpha - 1, -alpha, ply + 1) : alpha + 1;
+                if (score > alpha) score = -Negamax(depth - 1 + ext, -alpha - 1, -alpha, ply + 1);
+                if (pv && score > alpha && score < beta) score = -Negamax(depth - 1 + ext, -beta, -alpha, ply + 1);
             }
             _pos.UnmakeMove();
             if (_stopped) return 0;
@@ -439,7 +465,7 @@ public sealed class Searcher
             if (quiet && triedCount < tried.Length) tried[triedCount++] = m;
         }
 
-        if (legal == 0) return inCheck ? -Mate + ply : 0;
+        if (legal == 0) return excl != 0 ? alpha0 : inCheck ? -Mate + ply : 0;
 
         int stored = best;
         if (stored > Mate - 100) stored += ply;
@@ -448,7 +474,7 @@ public sealed class Searcher
 
         // Aprèn la correcció: només si el resultat no és un mat, la millor jugada no és una captura i la
         // cota és coherent amb el signe de l'error (una cota inferior per sota de l'avaluació no diu res).
-        if (!inCheck && Math.Abs(best) < Mate - 100 && (bestMove == 0 || IsQuiet(bestMove))
+        if (excl == 0 && !inCheck && Math.Abs(best) < Mate - 100 && (bestMove == 0 || IsQuiet(bestMove))
             && !(bound == Bound.Lower && best <= staticEval) && !(bound == Bound.Upper && best >= staticEval))
         {
             int target = Math.Clamp(best - rawEval, -CorrLimit, CorrLimit) * CorrGrain;
@@ -456,7 +482,7 @@ public sealed class Searcher
             e += (target - e) * Math.Min(depth + 1, 16) / 256;
         }
 
-        _tt.Store(key, bestMove, stored, inCheck ? TranspositionTable.NoEval : Math.Clamp(rawEval, -Mate, Mate), depth, bound);
+        if (excl == 0) _tt.Store(key, bestMove, stored, inCheck ? TranspositionTable.NoEval : Math.Clamp(rawEval, -Mate, Mate), depth, bound);
         return best;
     }
 

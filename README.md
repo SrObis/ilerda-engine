@@ -2,7 +2,7 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda és el nom romà de Lleida).
 
-**Estat:** v0.14.1 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, reducció iterativa interna (IIR), LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa) i lectura de taules Syzygy (WDL i DTZ) de fins a 6 peces. Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.14.2 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, reducció iterativa interna (IIR), LMR, reverse futility i futility, extensions singulars, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa) i lectura de taules Syzygy (WDL i DTZ) de fins a 6 peces. Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
@@ -13,6 +13,7 @@ Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda
 - Ordenació de jugades tranquil·les amb killers (2 per nivell) i history amb *malus* i *gravity*: la jugada tranquil·la que talla rep un bonus (`depth²`, màxim 1500) i les tranquil·les provades abans que no han tallat reben el mateix valor en negatiu; el canvi es redueix a mesura que el valor s'acosta al màxim (6000), així queda acotat.
 - PVS (*principal variation search*): la primera jugada de cada node es cerca amb finestra completa i la resta amb finestra nul·la; només es repeteixen amb finestra completa si superen alfa en un node PV.
 - Finestres d'aspiració: a partir de profunditat 5 el fil principal cerca al voltant de la puntuació de la iteració anterior (±20 cp) i eixampla la finestra al doble cada cop que falla.
+- Extensions singulars (des de la 0.14.2, opcions `SingDepth` i `SingMargin`): si la jugada de la taula de transposició és clarament millor que totes les altres, s'allarga un nivell; si ni sense ella es perd, el node es talla. Vegeu el [CHANGELOG](CHANGELOG.md).
 - Poda null move (no en escac, ni sense peces, ni dues vegades seguides).
 - LMR: les jugades tranquil·les que es proven tard es cerquen a menys profunditat i, si sorprenen, es tornen a cercar a fons. Els paràmetres són opcions UCI (`LmrDiv`, `LmrStart`, `LmrHist`).
 - Reverse futility (profunditat ≤ 6) i futility (≤ 4), amb marges configurables (`RfpMargin`, `FutMargin`).
@@ -301,6 +302,7 @@ Cada part per separat perd uns 35 Elo, i juntes es sumen. Amb tot activat el mot
 - [x] Correcció de l'avaluació per estructura de peons (v0.13.7: +6,5 ± 6,8 Elo contra la 0.13.6, 5.000 partides; uns +30 Elo contra Stockfish limitat)
 - [x] Taules Syzygy WDL (v0.14.0: 0 diferències contra python-chess en 30.500 posicions; -0,8 ± 6,7 Elo contra la 0.13.7 en 5.000 partides; el guany ha de venir del DTZ)
 - [x] Syzygy DTZ a l'arrel (v0.14.1: 0 diferències de DTZ contra python-chess en 30.500 posicions; +108,7 ± 13,0 Elo en 2.000 partides des de finals guanyats, converteix 1.000 de 1.000 contra 394 sense DTZ)
+- [x] Extensions singulars (v0.14.2: +23,5 ± 6,8 Elo contra la 0.14.1, 5.000 partides a 5+0,05, +1410 =2518 -1072, LOS 100 %; `bench 12` fa un 64 % més de nodes; contra Stockfish limitat ≈2924 al 3000 i ≈2978 al 3190, uns +8 Elo de mitjana sobre la 0.13.7, dins del marge)
 - [ ] History de continuació (provada i no adoptada; vegeu [History de continuació](#history-de-continuació-provada-i-no-adoptada))
 - [ ] Enviar a CCRL i CEGT, i després a les divisions baixes del TCEC
 
