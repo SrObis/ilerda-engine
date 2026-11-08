@@ -268,4 +268,4 @@ Cada part per separat perd uns 35 Elo, i juntes es sumen. Amb tot activat el mot
 
 ## Llicència
 
-MIT. Vegeu [LICENSE](LICENSE).
+MIT. Vegeu [LICENSE](LICENSE). El lector de taules Syzygy (en construcció) adapta Fathom, també MIT; vegeu [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

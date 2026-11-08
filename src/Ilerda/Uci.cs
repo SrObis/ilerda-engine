@@ -74,6 +74,7 @@ public static class Uci
                     Send("option name IirDepth type spin default 4 min 2 max 1000");
                     Send("option name SoftTime type spin default 100 min 10 max 100");
                     Send("option name EvalFile type string default <empty>");
+                    Send("option name SyzygyPath type string default <empty>");
                     Send("uciok");
                     break;
 
@@ -87,6 +88,14 @@ public static class Uci
                         else if (file.Equals("none", StringComparison.OrdinalIgnoreCase) || file.Equals("pesto", StringComparison.OrdinalIgnoreCase)) Nnue.Unload();
                         else if (!Nnue.Load(file, out string err)) Send($"info string no es pot carregar la xarxa: {err}");
                         pos.RefreshAccumulator();
+                        break;
+                    }
+                    if (t.Length >= 3 && t[1] == "name" && t[2].Equals("SyzygyPath", StringComparison.OrdinalIgnoreCase))
+                    {
+                        StopSearch();
+                        string tbPath = t.Length > 4 && t[3] == "value" ? string.Join(' ', t[4..]) : "";
+                        Syzygy.Init(tbPath, out string tbMsg);
+                        Send($"info string {tbMsg}");
                         break;
                     }
                     // setoption name Hash value <mb>
@@ -155,6 +164,29 @@ public static class Uci
                     }
                     long bms = Math.Max(1, bsw.ElapsedMilliseconds);
                     Send($"{total} nodes {total * 1000 / bms} nps");
+                    break;
+                }
+
+                case "tbprobe":
+                    Send(Syzygy.ProbeWdl(pos, out var tbw) ? $"tbprobe wdl {(int)tbw} ({tbw})" : "tbprobe no disponible");
+                    break;
+
+                case "tbcheck":
+                {
+                    // tbcheck <fitxer>: compara el WDL d'Ilerda amb el de les linies "FEN | wdl | dtz" (tools/syzygy/oracle.py)
+                    int tot = 0, bad = 0, nope = 0;
+                    var cp = new Position();
+                    foreach (var l in File.ReadLines(string.Join(' ', t[1..])))
+                    {
+                        var f = l.Split('|');
+                        if (f.Length < 2) continue;
+                        cp.SetFen(f[0].Trim());
+                        int want = int.Parse(f[1].Trim());
+                        tot++;
+                        if (!Syzygy.ProbeWdl(cp, out var got)) { nope++; continue; }
+                        if ((int)got != want && ++bad <= 5) Send($"diferent: {f[0].Trim()} oracle {want} nostre {(int)got}");
+                    }
+                    Send($"tbcheck {tot} posicions, {bad} diferents, {nope} sense resposta");
                     break;
                 }
 
