@@ -3,7 +3,7 @@ namespace Ilerda;
 public static class Uci
 {
     public const string Name = "Ilerda";
-    public const string Version = "0.14.0";
+    public const string Version = "0.14.1";
     public const string Author = "Jordi Obis";
 
     static readonly object OutLock = new();
@@ -78,6 +78,7 @@ public static class Uci
                     Send("option name SyzygyPath type string default <empty>");
                     Send("option name SyzygyProbeDepth type spin default 1 min 1 max 100");
                     Send("option name SyzygyProbeLimit type spin default 7 min 0 max 7");
+                    Send("option name SyzygyRoot type spin default 1 min 0 max 1");
                     Send("uciok");
                     break;
 
@@ -177,7 +178,7 @@ public static class Uci
                 case "tbcheck":
                 {
                     // tbcheck <fitxer>: compara el WDL d'Ilerda amb el de les linies "FEN | wdl | dtz" (tools/syzygy/oracle.py)
-                    int tot = 0, bad = 0, nope = 0;
+                    int tot = 0, bad = 0, nope = 0, badDtz = 0, nopeDtz = 0;
                     var cp = new Position();
                     foreach (var l in File.ReadLines(string.Join(' ', t[1..])))
                     {
@@ -188,8 +189,14 @@ public static class Uci
                         tot++;
                         if (!Syzygy.ProbeWdl(cp, out var got)) { nope++; continue; }
                         if ((int)got != want && ++bad <= 5) Send($"diferent: {f[0].Trim()} oracle {want} nostre {(int)got}");
+                        if (f.Length >= 3)
+                        {
+                            int wantDtz = int.Parse(f[2].Trim());
+                            if (!Syzygy.ProbeDtz(cp, out int gotDtz)) nopeDtz++;
+                            else if (gotDtz != wantDtz && ++badDtz <= 5) Send($"dtz diferent: {f[0].Trim()} oracle {wantDtz} nostre {gotDtz}");
+                        }
                     }
-                    Send($"tbcheck {tot} posicions, {bad} diferents, {nope} sense resposta");
+                    Send($"tbcheck {tot} posicions, {bad} diferents, {nope} sense resposta; dtz {badDtz} diferents, {nopeDtz} sense resposta");
                     break;
                 }
 

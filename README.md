@@ -2,7 +2,7 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda és el nom romà de Lleida).
 
-**Estat:** v0.14.0 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, reducció iterativa interna (IIR), LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa) i lectura de taules Syzygy WDL de fins a 6 peces. Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.14.1 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, reducció iterativa interna (IIR), LMR, reverse futility i futility, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa) i lectura de taules Syzygy (WDL i DTZ) de fins a 6 peces. Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
@@ -123,7 +123,7 @@ Mitjana d'unes **2.910**, uns **+35 Elo** per sobre de la 0.13.2 contra un adver
 
 ## Taules Syzygy
 
-Des de la **0.14.0** Ilerda llegeix taules de finals Syzygy (WDL, fitxers `.rtbw`) de fins a 6 peces. El lector és un port a C# del `tbprobe.c` de Fathom (MIT).
+Des de la **0.14.0** Ilerda llegeix taules de finals Syzygy de fins a 6 peces: WDL (fitxers `.rtbw`, a la cerca) i, des de la **0.14.1**, DTZ (fitxers `.rtbz`, a l'arrel). El lector és un port a C# del `tbprobe.c` de Fathom (MIT).
 
 ```
 setoption name SyzygyPath value D:	ablebases-4-5;D:	ablebases
@@ -134,12 +134,17 @@ setoption name SyzygyPath value D:	ablebases-4-5;D:	ablebases
 | `SyzygyPath` | buit | Carpetes amb les taules, separades per `;`. Buit desactiva les taules. |
 | `SyzygyProbeDepth` | 1 | Profunditat mínima restant per sondejar dins la cerca. |
 | `SyzygyProbeLimit` | 7 | Màxim de peces per sondejar (es limita al de les taules trobades). |
+| `SyzygyRoot` | 1 | A l'arrel, només es cerquen les jugades que conserven el millor resultat segons el DTZ (0 ho desactiva). |
 
 A la cerca, una posició sense enroc i amb el comptador de 50 jugades a 0 que és a les taules retorna victòria, taules o derrota exactes (`±(20000 - ply)`, per sota de les puntuacions de mat). Les victòries "maleïdes" (taules per la regla dels 50) compten com a taules.
 
 **Validació:** `tools/syzygy/oracle.py` genera posicions aleatòries amb python-chess i l'ordre `tbcheck <fitxer>` les compara: 0 diferències en 30.500 posicions de 3 a 6 peces.
 
-**Resultat:** 5.000 partides contra la 0.13.7 (5+0,05): -0,8 ± 6,7 Elo, empat tècnic, perquè el WDL sol no ensenya a convertir els finals guanyats. Això ho ha de fer el DTZ (0.14.1), que triarà jugada a l'arrel. Sense `SyzygyPath`, la cerca és idèntica a la 0.13.7.
+**Resultat de la 0.14.0 (només WDL):** 5.000 partides contra la 0.13.7 (5+0,05): -0,8 ± 6,7 Elo, empat tècnic, perquè el WDL sol no ensenya a convertir els finals guanyats.
+
+**DTZ a l'arrel (0.14.1).** A l'arrel, cada jugada legal es puntua segons el DTZ de la posició resultant i la regla dels 50, i només es cerca entre les millors: amb victòria, la de DTZ mínim; amb derrota, la que resisteix més; amb taules, les que no perden. `tools/syzygy/conversio.py` juga Ilerda contra si mateix des de posicions guanyades: de 30 posicions, sense DTZ convertia 3 (alfil i cavall contra rei), 19 (torre i peó contra torre) o 24 (dama i torre contra torre i peó), i amb DTZ 30, 30 i 30.
+
+Com que les partides normals gairebé no arriben a aquests finals, es va mesurar amb un llibre de 1.386 finals guanyats (`tools/syzygy/finals-guanyats.epd`, de 3 a 6 peces, DTZ entre 10 i 100): 2.000 partides a 10+0,1 contra la 0.14.0, totes dues amb taules, **+108,7 ± 13,0 Elo** (+1000 =606 -394). Amb el bàndol guanyador la 0.14.1 converteix 1.000 de 1.000 i la 0.14.0 només 394 (606 taules, 260 per la regla dels 50). Mesura la conversió dels finals, no la força general. Sense `SyzygyPath`, la cerca és idèntica.
 
 ## Multifil (Lazy SMP)
 
@@ -295,7 +300,7 @@ Cada part per separat perd uns 35 Elo, i juntes es sumen. Amb tot activat el mot
 - [x] Triple repetició per a les posicions anteriors a l'arrel (v0.13.6: correcció d'un defecte, no una millora de força mesurable: unes 2.900 contra Stockfish limitat, igual que la 0.13.5; les jugades amb avaluació 0,00 a profunditat 64 baixen de 785 a 327 en 600 partides)
 - [x] Correcció de l'avaluació per estructura de peons (v0.13.7: +6,5 ± 6,8 Elo contra la 0.13.6, 5.000 partides; uns +30 Elo contra Stockfish limitat)
 - [x] Taules Syzygy WDL (v0.14.0: 0 diferències contra python-chess en 30.500 posicions; -0,8 ± 6,7 Elo contra la 0.13.7 en 5.000 partides; el guany ha de venir del DTZ)
-- [ ] Syzygy DTZ a l'arrel (v0.14.1)
+- [x] Syzygy DTZ a l'arrel (v0.14.1: 0 diferències de DTZ contra python-chess en 30.500 posicions; +108,7 ± 13,0 Elo en 2.000 partides des de finals guanyats, converteix 1.000 de 1.000 contra 394 sense DTZ)
 - [ ] History de continuació (provada i no adoptada; vegeu [History de continuació](#history-de-continuació-provada-i-no-adoptada))
 - [ ] Enviar a CCRL i CEGT, i després a les divisions baixes del TCEC
 

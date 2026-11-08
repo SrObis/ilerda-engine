@@ -87,16 +87,29 @@ public static unsafe class Syzygy
         public bool Symmetric, HasPawns, KkEnc;
         public int Pawns0, Pawns1;
         public readonly EncInfo[] Ei = new EncInfo[8]; // peces: 2 (per bàndol); peons: 4 columnes x 2 bàndols
+        // DTZ (fitxer .rtbz)
+        public string? DtzPath;
+        public MemoryMappedFile? DtzMapping;
+        public MemoryMappedViewAccessor? DtzView;
+        public volatile bool DtzReady;
+        public volatile bool DtzError;
+        public readonly EncInfo[] DtzEi = new EncInfo[4];
+        public readonly byte[] DtzFlags = new byte[4];
+        public byte* DtzMap;
+        public readonly ushort[,] DtzMapIdx = new ushort[4, 4];
     }
 
     // ---------- Estat ----------
 
     const int PieceEnc = 0, FileEnc = 1, RankEnc = 2;
-    const uint WdlMagic = 0x5d23e871;
+    const uint WdlMagic = 0x5d23e871, DtzMagic = 0xa50c66d7;
+    static readonly int[] WdlToMap = { 1, 3, 0, 2, 0 };
+    static readonly byte[] PaFlags = { 8, 0, 0, 0, 4 };
+    static readonly int[] WdlToDtz = { -1, -101, 0, 101, 1 };
 
     static readonly Dictionary<ulong, BaseEntry> _hash = new();
     static readonly List<BaseEntry> _entries = new();
-    static readonly HashSet<string> _dtzFiles = new(StringComparer.OrdinalIgnoreCase);
+    static readonly Dictionary<string, string> _dtzFiles = new(StringComparer.OrdinalIgnoreCase);
     static readonly object _lock = new();
 
     /// <summary>Nombre màxim de peces (reis inclosos) de les taules trobades; 0 si no n'hi ha.</summary>
@@ -184,10 +197,13 @@ public static unsafe class Syzygy
                     string ext = System.IO.Path.GetExtension(file);
                     string name = System.IO.Path.GetFileNameWithoutExtension(file);
                     if (Cardinality(name) == 0) continue;
-                    if (ext.Equals(".rtbz", StringComparison.OrdinalIgnoreCase)) _dtzFiles.Add(name);
+                    if (ext.Equals(".rtbz", StringComparison.OrdinalIgnoreCase)) _dtzFiles.TryAdd(name, file);
                     else if (ext.Equals(".rtbw", StringComparison.OrdinalIgnoreCase)) AddTable(name, file);
                 }
             }
+
+            foreach (var be in _entries)
+                if (_dtzFiles.TryGetValue(be.Name, out var dz) && (new FileInfo(dz).Length & 63) == 16) be.DtzPath = dz;
 
             Path = path;
             message = dirs == 0
@@ -207,6 +223,12 @@ public static unsafe class Syzygy
                 be.View.Dispose();
             }
             be.Mapping?.Dispose();
+            if (be.DtzView != null)
+            {
+                be.DtzView.SafeMemoryMappedViewHandle.ReleasePointer();
+                be.DtzView.Dispose();
+            }
+            be.DtzMapping?.Dispose();
         }
         _entries.Clear();
         _hash.Clear();
@@ -354,7 +376,7 @@ public static unsafe class Syzygy
         tmp[s] = true;
     }
 
-    static PairsData SetupPairs(ref byte* ptr, long tbSize, out long size0, out long size1, out long size2, out byte flags)
+    static PairsData SetupPairs(ref byte* ptr, long tbSize, out long size0, out long size1, out long size2, out byte flags, bool wdl = true)
     {
         var d = new PairsData();
         byte* data = ptr;
@@ -363,7 +385,7 @@ public static unsafe class Syzygy
         if ((data[0] & 0x80) != 0)
         {
             d.IdxBits = 0;
-            d.ConstValue = data[1]; // WDL
+            d.ConstValue = wdl ? data[1] : (byte)0;
             ptr = data + 2;
             size0 = size1 = size2 = 0;
             return d;
@@ -492,6 +514,102 @@ public static unsafe class Syzygy
                     be.Ei[num + t].Precomp!.Data = data;
                     data += size[t, 1, 2];
                 }
+            }
+
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Mapa el fitxer .rtbz i en llegeix la capçalera (equivalent a init_table per a DTZ).</summary>
+    static bool InitDtzTable(BaseEntry be)
+    {
+        MemoryMappedFile? mf = null;
+        MemoryMappedViewAccessor? view = null;
+        try
+        {
+            mf = MemoryMappedFile.CreateFromFile(be.DtzPath!, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
+            view = mf.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+            byte* basePtr = null;
+            view.SafeMemoryMappedViewHandle.AcquirePointer(ref basePtr);
+            basePtr += view.PointerOffset;
+            byte* data = basePtr;
+
+            if (*(uint*)data != DtzMagic)
+            {
+                view.SafeMemoryMappedViewHandle.ReleasePointer();
+                view.Dispose();
+                mf.Dispose();
+                return false;
+            }
+
+            be.DtzMapping = mf;
+            be.DtzView = view;
+
+            data += 5; // el DTZ no es divideix per bàndols
+
+            int num = be.HasPawns ? 4 : 1;
+            int enc = be.HasPawns ? FileEnc : PieceEnc;
+
+            var tbSize = new long[4];
+            for (int t = 0; t < num; t++)
+            {
+                be.DtzEi[t] = new EncInfo();
+                tbSize[t] = InitEncInfo(be.DtzEi[t], be, data, 0, t, enc);
+                data += be.Num + 1 + (be.HasPawns && be.Pawns1 != 0 ? 1 : 0);
+            }
+            data += (long)data & 1;
+
+            var size = new long[4, 3];
+            for (int t = 0; t < num; t++)
+            {
+                be.DtzEi[t].Precomp = SetupPairs(ref data, tbSize[t], out size[t, 0], out size[t, 1], out size[t, 2], out byte fl, false);
+                be.DtzFlags[t] = fl;
+            }
+
+            byte* map = data;
+            be.DtzMap = map;
+            for (int t = 0; t < num; t++)
+            {
+                if ((be.DtzFlags[t] & 2) == 0) continue;
+                if ((be.DtzFlags[t] & 16) == 0)
+                {
+                    for (int i = 0; i < 4; i++)
+                    {
+                        be.DtzMapIdx[t, i] = (ushort)(data + 1 - map);
+                        data += 1 + data[0];
+                    }
+                }
+                else
+                {
+                    data += (long)data & 1;
+                    for (int i = 0; i < 4; i++)
+                    {
+                        be.DtzMapIdx[t, i] = (ushort)((ushort*)data + 1 - (ushort*)map);
+                        data += 2 + 2 * *(ushort*)data;
+                    }
+                }
+            }
+            data += (long)data & 1;
+
+            for (int t = 0; t < num; t++)
+            {
+                be.DtzEi[t].Precomp!.IndexTable = data;
+                data += size[t, 0];
+            }
+            for (int t = 0; t < num; t++)
+            {
+                be.DtzEi[t].Precomp!.SizeTable = (ushort*)data;
+                data += size[t, 1];
+            }
+            for (int t = 0; t < num; t++)
+            {
+                data = (byte*)(((long)data + 0x3f) & ~0x3fL);
+                be.DtzEi[t].Precomp!.Data = data;
+                data += size[t, 2];
             }
 
             return true;
@@ -772,6 +890,86 @@ public static unsafe class Syzygy
         return true;
     }
 
+    /// <summary>Valor DTZ cru de la taula (en mitges jugades, sense el signe); 1 = bé, 0 = no hi ha taula, -1 = caldria l'altre bàndol.</summary>
+    static int ProbeDtzTable(Position pos, int wdl, out int value)
+    {
+        value = 0;
+        ulong key = CalcKey(pos);
+        if (!_hash.TryGetValue(key, out var be) || be.DtzPath == null || be.DtzError) return 0;
+
+        if (!be.DtzReady)
+        {
+            lock (_lock)
+            {
+                if (be.DtzError) return 0;
+                if (!be.DtzReady)
+                {
+                    if (!InitDtzTable(be)) { be.DtzError = true; return 0; }
+                    be.DtzReady = true;
+                }
+            }
+        }
+
+        bool whiteToMove = pos.Side == 0;
+        bool flip, bside;
+        if (!be.Symmetric)
+        {
+            flip = key != be.Key;
+            bside = whiteToMove == flip;
+        }
+        else
+        {
+            flip = !whiteToMove;
+            bside = false;
+        }
+
+        Span<int> p = stackalloc int[7];
+        EncInfo ei;
+        long idx;
+        int t = 0;
+        byte flags;
+
+        if (!be.HasPawns)
+        {
+            flags = be.DtzFlags[0];
+            if (((flags & 1) != 0) != bside && !be.Symmetric) return -1;
+            ei = be.DtzEi[0];
+            for (int i = 0; i < be.Num;)
+                i = FillSquares(pos, ei.Pieces, flip, 0, p, i);
+            idx = Encode(p, ei, be, PieceEnc);
+        }
+        else
+        {
+            ei = be.DtzEi[0];
+            int mirror = flip ? 0x38 : 0;
+            int i = FillSquares(pos, ei.Pieces, flip, mirror, p, 0);
+            t = LeadingPawn(p, be, FileEnc);
+            flags = be.DtzFlags[t];
+            if (((flags & 1) != 0) != bside && !be.Symmetric) return -1;
+            ei = be.DtzEi[t];
+            while (i < be.Num)
+                i = FillSquares(pos, ei.Pieces, flip, mirror, p, i);
+            idx = Encode(p, ei, be, FileEnc);
+        }
+
+        if (ei.Precomp == null) return 0;
+        int r = DecompressPairs(ei.Precomp, idx);
+        int v = (r & 0xff) | (r & 0x0f00);
+
+        if ((flags & 2) != 0)
+        {
+            int m = WdlToMap[wdl + 2];
+            if ((flags & 16) == 0)
+                v = be.DtzMap[be.DtzMapIdx[t, m] + v];
+            else
+                v = ((ushort*)be.DtzMap)[be.DtzMapIdx[t, m] + v];
+        }
+        if ((flags & PaFlags[wdl + 2]) == 0 || (wdl & 1) != 0) v *= 2;
+
+        value = v;
+        return 1;
+    }
+
     static bool IsCapture(Position pos, int m) =>
         MoveGen.Flag(m) == MoveGen.FlagEp || pos.Board[MoveGen.To(m)] != -1;
 
@@ -803,9 +1001,13 @@ public static unsafe class Syzygy
     /// Sondeja WDL d'una posició (equivalent a probe_wdl de Fathom). Només és vàlid sense drets d'enroc.
     /// Retorna false si no hi ha taula per a aquest material o no es pot llegir.
     /// </summary>
-    public static bool ProbeWdl(Position pos, out Wdl wdl)
+    public static bool ProbeWdl(Position pos, out Wdl wdl) => ProbeWdlEx(pos, out wdl, out _);
+
+    /// <summary>Com <see cref="ProbeWdl"/>; <paramref name="special"/> és l'"èxit 2" de Fathom (captura guanyadora o captura al pas com a única millor).</summary>
+    static bool ProbeWdlEx(Position pos, out Wdl wdl, out bool special)
     {
         wdl = Wdl.Draw;
+        special = false;
         if (!Enabled || pos.Castling != 0) return false;
         if (BitOperations.PopCount(pos.Occ) > MaxCardinality) return false;
 
@@ -825,7 +1027,7 @@ public static unsafe class Syzygy
             if (!ok) return false;
             if (v > bestCap)
             {
-                if (v == 2) { wdl = Wdl.Win; return true; }
+                if (v == 2) { wdl = Wdl.Win; special = true; return true; }
                 if (MoveGen.Flag(m) != MoveGen.FlagEp) bestCap = v;
                 else if (v > bestEp) bestEp = v;
             }
@@ -835,13 +1037,14 @@ public static unsafe class Syzygy
 
         if (bestEp > bestCap)
         {
-            if (bestEp > tv) { wdl = (Wdl)bestEp; return true; } // la captura al pas és la millor
+            if (bestEp > tv) { wdl = (Wdl)bestEp; special = true; return true; } // la captura al pas és la millor
             bestCap = bestEp;
         }
 
         if (bestCap >= tv)
         {
             wdl = (Wdl)bestCap;
+            special = bestCap > 0;
             return true;
         }
 
@@ -859,11 +1062,155 @@ public static unsafe class Syzygy
             if (!anyLegal && !pos.InCheck())
             {
                 wdl = (Wdl)bestEp;
+                special = true;
                 return true;
             }
         }
 
         wdl = (Wdl)tv;
         return true;
+    }
+
+    static bool IsMate(Position pos)
+    {
+        if (!pos.InCheck()) return false;
+        Span<int> mv = stackalloc int[256];
+        int n = MoveGen.Generate(pos, mv);
+        for (int i = 0; i < n; i++)
+            if (pos.MakeMove(mv[i])) { pos.UnmakeMove(); return false; }
+        return true;
+    }
+
+    static bool IsPawnMove(Position pos, int m) => pos.Board[MoveGen.From(m)] % 6 == Pc.Pawn;
+
+    /// <summary>
+    /// DTZ d'una posició (equivalent a probe_dtz de Fathom), en mitges jugades fins al proper canvi (captura o moviment de peó):
+    /// positiu si guanya el bàndol que juga, negatiu si perd, 0 si taules; 101 o més per a les victòries "maleïdes".
+    /// Retorna false si no hi ha les taules necessàries.
+    /// </summary>
+    public static bool ProbeDtz(Position pos, out int dtz)
+    {
+        dtz = 0;
+        if (!ProbeWdlEx(pos, out var w, out bool special)) return false;
+        int wdl = (int)w;
+        if (wdl == 0) return true;
+        if (special) { dtz = WdlToDtz[wdl + 2]; return true; }
+
+        Span<int> moves = stackalloc int[256];
+        int n;
+
+        if (wdl > 0)
+        {
+            // Una jugada de peó sense captura que mantingui la victòria dona DTZ = 1 (o 101).
+            n = MoveGen.Generate(pos, moves);
+            for (int i = 0; i < n; i++)
+            {
+                int m = moves[i];
+                if (!IsPawnMove(pos, m) || IsCapture(pos, m)) continue;
+                if (!pos.MakeMove(m)) continue;
+                bool ok1 = ProbeWdlEx(pos, out var w1, out _);
+                pos.UnmakeMove();
+                if (!ok1) return false;
+                if (-(int)w1 == wdl) { dtz = WdlToDtz[wdl + 2]; return true; }
+            }
+        }
+
+        int st = ProbeDtzTable(pos, wdl, out int raw);
+        if (st > 0)
+        {
+            dtz = WdlToDtz[wdl + 2] + (wdl > 0 ? raw : -raw);
+            return true;
+        }
+        if (st == 0) return false;
+
+        // st < 0: la taula és de l'altre bàndol; cal mirar les jugades i sondejar el DTZ de la posició resultant.
+        int best = wdl > 0 ? int.MaxValue : WdlToDtz[wdl + 2];
+        n = MoveGen.Generate(pos, moves);
+        for (int i = 0; i < n; i++)
+        {
+            int m = moves[i];
+            if (IsCapture(pos, m) || IsPawnMove(pos, m)) continue;
+            if (!pos.MakeMove(m)) continue;
+            bool ok2 = ProbeDtz(pos, out int d);
+            bool mate = ok2 && -d == 1 && IsMate(pos);
+            pos.UnmakeMove();
+            if (!ok2) return false;
+            int v = -d;
+            if (v == 1 && mate) best = 1;
+            else if (wdl > 0) { if (v > 0 && v + 1 < best) best = v + 1; }
+            else if (v - 1 < best) best = v - 1;
+        }
+        dtz = best;
+        return true;
+    }
+
+    /// <summary>
+    /// Jugades de l'arrel que conserven el millor resultat segons les taules (equivalent a root_probe_dtz / root_probe_wdl de Fathom).
+    /// Amb victòria queden només les que guanyen més de pressa (DTZ mínim) sense passar-se de la regla dels 50; amb derrota, les que
+    /// resisteixen més; amb taules, les que no perden. Retorna null si la posició no és a les taules.
+    /// </summary>
+    public static int[]? RootMoves(Position pos, int pieceLimit)
+    {
+        if (!Enabled || pos.Castling != 0) return null;
+        int pieces = BitOperations.PopCount(pos.Occ);
+        if (pieces > MaxCardinality || pieces > pieceLimit) return null;
+
+        Span<int> all = stackalloc int[320];
+        int n = MoveGen.Generate(pos, all);
+        var mv = new List<int>();
+        var rank = new List<int>();
+        var vs = new List<int>();
+        int cnt50 = pos.Halfmove;
+        bool useDtz = true;
+
+        for (int pass = 0; pass < 2; pass++)
+        {
+            mv.Clear(); rank.Clear(); vs.Clear();
+            bool ok = true;
+            for (int i = 0; i < n && ok; i++)
+            {
+                int m = all[i];
+                if (!pos.MakeMove(m)) continue;
+                int v = 0, r = 0;
+                if (pass == 0)
+                {
+                    if (pos.Halfmove == 0)
+                    {
+                        if (ProbeWdl(pos, out var w)) v = WdlToDtz[-(int)w + 2]; else ok = false;
+                    }
+                    else if (ProbeDtz(pos, out int d))
+                    {
+                        v = -d;
+                        if (v > 0) v++; else if (v < 0) v--;
+                        if (v == 2 && IsMate(pos)) v = 1;
+                    }
+                    else ok = false;
+                    r = v > 0 ? (v + cnt50 <= 99 ? 1000 : 1000 - (v + cnt50))
+                      : v < 0 ? (-v * 2 + cnt50 < 100 ? -1000 : -1000 + (-v + cnt50))
+                      : 0;
+                }
+                else
+                {
+                    if (ProbeWdl(pos, out var w)) r = new[] { -1000, -899, 0, 899, 1000 }[-(int)w + 2]; else ok = false;
+                }
+                pos.UnmakeMove();
+                mv.Add(m); rank.Add(r); vs.Add(v);
+            }
+            if (ok) { useDtz = pass == 0; break; }
+            if (pass == 1) return null;
+        }
+
+        int best = int.MinValue;
+        foreach (int r in rank) best = Math.Max(best, r);
+
+        // Entre les victòries "segures" (rang 1000) es tria el DTZ mínim; entre les derrotes "segures", el màxim.
+        int target = 0;
+        if (useDtz && best == 1000) { target = int.MaxValue; for (int i = 0; i < mv.Count; i++) if (rank[i] == best) target = Math.Min(target, vs[i]); }
+        else if (useDtz && best == -1000) { target = int.MaxValue; for (int i = 0; i < mv.Count; i++) if (rank[i] == best) target = Math.Min(target, vs[i]); }
+
+        var keep = new List<int>();
+        for (int i = 0; i < mv.Count; i++)
+            if (rank[i] == best && (target == 0 || vs[i] == target)) keep.Add(mv[i]);
+        return keep.ToArray();
     }
 }
