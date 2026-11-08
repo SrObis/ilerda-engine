@@ -51,6 +51,12 @@ public sealed class Searcher
     int _rfpMargin = 90;  // marge de reverse futility per nivell de profunditat (1000 = pràcticament desactivada)
     int _futMargin = 110; // marge de futility per nivell de profunditat
     int _iirDepth = 4;    // profunditat mínima de la reducció iterativa interna (1000 = desactivada)
+    // Correcció de l'avaluació estàtica: per a cada estructura de peons es manté una mitjana mòbil de
+    // (puntuació de la cerca - avaluació de la xarxa), en 1/CorrGrain de centipeó, i s'afegeix a l'avaluació.
+    // Així la cerca compensa els errors sistemàtics de la xarxa en posicions que s'assemblen.
+    const int CorrGrain = 256, CorrSize = 16384, CorrLimit = 100;
+    readonly int[,] _corr = new int[2, CorrSize];
+    int _corrWeight = 100; // % de la correcció que s'aplica (0 = desactivada)
     int _softTime = 100;  // % del límit de temps passat el qual no s'inicia una iteració nova (100 = només el límit dur)
 
     // Gestió del temps: multiplicador del temps òptim segons quantes iteracions seguides
@@ -77,6 +83,7 @@ public sealed class Searcher
             case "rfpmargin": _rfpMargin = Math.Clamp(value, 0, 1000); return true;
             case "futmargin": _futMargin = Math.Clamp(value, 0, 1000); return true;
             case "iirdepth": _iirDepth = Math.Clamp(value, 2, 1000); return true;
+            case "corrweight": _corrWeight = Math.Clamp(value, 0, 300); return true;
             case "softtime": _softTime = Math.Clamp(value, 10, 100); return true;
             default: return false;
         }
@@ -102,7 +109,8 @@ public sealed class Searcher
     {
         _tt.Clear();
         Array.Clear(_history);
-        foreach (var h in _helpers) Array.Clear(h._history);
+        Array.Clear(_corr);
+        foreach (var h in _helpers) { Array.Clear(h._history); Array.Clear(h._corr); }
     }
 
     /// <summary>Nodes de tots els fils (per a la informació; el límit de nodes compta només el fil principal).</summary>
@@ -305,7 +313,11 @@ public sealed class Searcher
         if (depth >= _iirDepth && ttMove == 0) depth--;
 
         bool pv = beta - alpha > 1;
-        int staticEval = inCheck ? -Inf : ttEval != TranspositionTable.NoEval ? ttEval : Eval.Evaluate(_pos);
+        int rawEval = inCheck ? -Inf : ttEval != TranspositionTable.NoEval ? ttEval : Eval.Evaluate(_pos);
+        int corrIdx = CorrIndex();
+        int staticEval = rawEval;
+        if (!inCheck && _corrWeight > 0)
+            staticEval = Math.Clamp(rawEval + _corr[_pos.Side, corrIdx] * _corrWeight / (100 * CorrGrain), -Mate + 100, Mate - 100);
 
         // Reverse futility: si l'avaluació estàtica supera beta amb un bon marge a poca profunditat,
         // la posició és tan bona que es talla sense cercar. No en PV, escac ni quan busquem mats.
@@ -398,8 +410,27 @@ public sealed class Searcher
         if (stored > Mate - 100) stored += ply;
         else if (stored < -Mate + 100) stored -= ply;
         Bound bound = best >= beta ? Bound.Lower : best > alpha0 ? Bound.Exact : Bound.Upper;
-        _tt.Store(key, bestMove, stored, inCheck ? TranspositionTable.NoEval : Math.Clamp(staticEval, -Mate, Mate), depth, bound);
+
+        // Aprèn la correcció: només si el resultat no és un mat, la millor jugada no és una captura i la
+        // cota és coherent amb el signe de l'error (una cota inferior per sota de l'avaluació no diu res).
+        if (!inCheck && Math.Abs(best) < Mate - 100 && (bestMove == 0 || IsQuiet(bestMove))
+            && !(bound == Bound.Lower && best <= staticEval) && !(bound == Bound.Upper && best >= staticEval))
+        {
+            int target = Math.Clamp(best - rawEval, -CorrLimit, CorrLimit) * CorrGrain;
+            ref int e = ref _corr[_pos.Side, corrIdx];
+            e += (target - e) * Math.Min(depth + 1, 16) / 256;
+        }
+
+        _tt.Store(key, bestMove, stored, inCheck ? TranspositionTable.NoEval : Math.Clamp(rawEval, -Mate, Mate), depth, bound);
         return best;
+    }
+
+    // Índex de la taula de correcció: hash de les posicions dels peons de les dues bandes.
+    int CorrIndex()
+    {
+        ulong h = _pos.Bb[Pc.Pawn] * 0x9E3779B97F4A7C15UL ^ _pos.Bb[6 + Pc.Pawn] * 0xC2B2AE3D27D4EB4FUL;
+        h ^= h >> 29;
+        return (int)(h & (CorrSize - 1));
     }
 
     int Quiesce(int alpha, int beta, int ply)
