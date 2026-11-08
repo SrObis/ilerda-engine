@@ -1,5 +1,17 @@
 # Canvis
 
+## 0.13.6 — Triple repetició per a les posicions anteriors a l'arrel
+
+**Problema.** Analitzant les 255 derrotes contra Stockfish de la 0.13.3, en 613 jugades d'Ilerda la cerca arribava a profunditat 64 en 4 ms amb avaluació 0,00, sense ser jugades forçades. Reproduït: a una posició d'una partida perduda (rei sol contra torre, alfil i peó) la cerca donava 0,00 amb l'historial de la partida i -19 peons des de zero. `IsRepetition` donava per taules qualsevol posició ja vista una vegada, també anterior a l'arrel; així que, quan el bàndol perdent movia el rei i tornava a una posició de la partida, la cerca puntuava aquella jugada 0 a l'instant, sense mirar què feia l'adversari, que no està obligat a repetir.
+
+**Canvi.**
+
+- Nova `Position.IsRepetition(ply)`: una posició ja vista **dins de l'arbre de cerca** (arrel inclosa) compta com a taules a la primera repetició; una de la partida **anterior a l'arrel** només si ja s'havia vist dues vegades (triple repetició), com fan els motors forts.
+- `DataGen` conserva la funció antiga, perquè la generació de dades no canviï.
+- `bench 12` (un fil): 6.990.007 nodes, igual que la 0.13.5: des de zero no hi ha historial, així que la cerca no canvia. A la posició de l'exemple, de 0,00 a -22,9 peons.
+
+**Resultat.** L'autojoc no hi serveix: les dues versions comparteixen la mateixa manera de mirar l'historial, i el defecte només es veu contra un adversari que no repeteix. Contra Stockfish limitat (10+0,1, 200 partides per nivell): 84,5 % al 2600, 33,5 % al 3000 i 18,2 % al 3190, unes **2.900** de mitjana, igual que la 0.13.5 (≈2.903) dins del marge. Les jugades amb profunditat 64 en 4 ms (el símptoma) baixen de 785 a 327 en 600 partides, però les partides perdudes es queden igual (251 contra 252): és una correcció de comportament que no mou la puntuació mesurable. La resta de les 327 són finals tablejats o repeticions dins de l'arbre, que continuen sent taules legítimes.
+
 ## 0.13.5 — Reducció iterativa interna i taula de transposició a la quiescència
 
 **Problema.** Quan una posició no tenia jugada a la taula, la cerca la tractava igual que les altres encara que l'ordenació fos dolenta. I la quiescència no consultava la taula: tornava a avaluar i a recórrer captures de posicions ja vistes.
