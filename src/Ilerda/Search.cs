@@ -275,7 +275,7 @@ public sealed class Searcher
         if (CheckStop()) return 0;
         _nodes++;
 
-        if (ply > 0 && (_pos.Halfmove >= 100 || _pos.IsRepetition() || _pos.InsufficientMaterial())) return 0;
+        if (ply > 0 && (_pos.Halfmove >= 100 || _pos.IsRepetition(ply) || _pos.InsufficientMaterial())) return 0;
 
         bool inCheck = _pos.InCheck();
         if (inCheck && ply < 60) depth++;
