@@ -176,7 +176,7 @@ public static class Eval
     /// <summary>Puntuació en centipeons des del punt de vista del bàndol que juga.</summary>
     public static int Evaluate(Position p)
     {
-        if (Nnue.Loaded) return Nnue.Evaluate(p.Acc, p.Side);
+        if (Nnue.Loaded) return Nnue.Evaluate(p.Acc, p.Side, Nnue.BucketOf(BitOperations.PopCount(p.ByColor[0] | p.ByColor[1])));
 
         int mg = 0, eg = 0, phase = 0;
 

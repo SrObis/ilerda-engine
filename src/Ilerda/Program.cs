@@ -22,6 +22,12 @@ if (args.Length >= 4 && args[0] == "datagen")
     return 0;
 }
 
+//   ilerda tbrelabel <entrada> <sortida> <carpetes_syzygy> [fils]  -> posa el resultat exacte de les taules a les posicions de <= 6 peces
+if (args.Length >= 4 && args[0] == "tbrelabel")
+{
+    return TbRelabel.Run(args[1], args[2], args[3], args.Length > 4 ? int.Parse(args[4]) : Math.Max(1, Environment.ProcessorCount - 1));
+}
+
 //   ilerda book <línies> <fitxer> [fils] [llavor] [nodes] [marge]  -> llibre d'obertures EPD filtrat pel motor
 if (args.Length >= 3 && args[0] == "book")
 {

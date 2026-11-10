@@ -2,7 +2,7 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. El nom és provisional (Ilerda és el nom romà de Lleida).
 
-**Estat:** v0.14.2 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, reducció iterativa interna (IIR), LMR, reverse futility i futility, extensions singulars, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 incrustada a l'executable; les taules PeSTO es conserven com a alternativa) i lectura de taules Syzygy (WDL i DTZ) de fins a 6 peces. Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.15.0 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, reducció iterativa interna (IIR), LMR, reverse futility i futility, extensions singulars, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 amb 8 buckets de sortida segons el nombre de peces, incrustada a l'executable; les taules PeSTO es conserven com a alternativa) i lectura de taules Syzygy (WDL i DTZ) de fins a 6 peces. Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
@@ -170,7 +170,7 @@ Els 4 fils guanyen molt clar. `SoftTime=60` queda dins del soroll i es deixa des
 
 ## NNUE
 
-L'avaluació és una xarxa **768 → 256 (×2 perspectives) → 1** amb activació SCReLU, entrenada amb [bullet](https://github.com/jw1912/bullet) i incrustada a l'executable (`src/Ilerda/nets/ilerda-256.bin`). Opció UCI `EvalFile`: buida = xarxa incrustada, `none` = avaluació PeSTO, o la ruta d'un altre `quantised.bin` de bullet.
+L'avaluació és una xarxa **768 → 256 (×2 perspectives) → 1** amb activació SCReLU i **8 buckets de sortida** pel nombre de peces (des de la 0.15.0), entrenada amb [bullet](https://github.com/jw1912/bullet) i incrustada a l'executable (`src/Ilerda/nets/ilerda-256.bin`). Opció UCI `EvalFile`: buida = xarxa incrustada, `none` = avaluació PeSTO, o la ruta d'un altre `quantised.bin` de bullet.
 
 - **Característiques:** (peça, casella) des de cada bàndol, peces pròpies al bloc 0 i del rival al 384, casella girada en vertical per a les negres. No depenen del rei, així que els acumuladors s'actualitzen sumant i restant una fila de pesos per cada peça afegida o treta.
 - **Entrenament:** 49,9 M de posicions de `datagen` (motor 0.6.1, 5.000 nodes, obertures aleatòries) més 22 M de noves (v0.10.0, 8.000 nodes, llibre propi; vegeu més avall), deduplicades i barrejades; 20 superbatches (≈40 èpoques) a una T4 de Kaggle en 4,5 minuts. Procediment complet i format del fitxer a [tools/nnue/kaggle-bullet.md](tools/nnue/kaggle-bullet.md); el subconjunt es treu amb `tools/subset`.
@@ -197,6 +197,13 @@ Les etiquetes venen d'un motor d'aproximadament 2400–2500 Elo i d'obertures al
 | 3000 | 12,0 % | 17,0 % |
 
 Com que la xarxa nova s'ha entrenat amb etiquetes de la 0.10.0 i s'ha provat contra ella, hi podria haver una mica d'inflació per autojoc; la prova contra Stockfish l'evita i confirma la millora.
+
+### v0.15.0: buckets de sortida i etiquetes de les taules
+
+- **8 buckets de sortida.** La capa de sortida té un joc de pesos per cada tram de nombre de peces (reis inclosos): `bucket = (peces - 2) / 4`. `Nnue.cs` detecta el format per la mida del fitxer (401.984 bytes amb 8 buckets) i també llegeix les xarxes sense buckets.
+- **`ilerda tbrelabel`.** Posa a les posicions de 6 peces o menys el resultat exacte de Syzygy en lloc del de la partida. Sobre `mix2.txt` canvia 1,86 M de resultats d'un total de 109,2 M de línies (2,1 minuts). La puntuació no es toca. Vegeu [tools/nnue/buckets.md](tools/nnue/buckets.md).
+- **Resultat:** +42,9 ± 7,7 Elo contra la 0.14.2 (5.000 partides a 5+0,05, +1885 =1844 −1271). El calibratge millora: amb +0,5 a +1 d'avaluació en el mig joc amb material igual, la puntuació real passa del 47,8 % al 60,2 %. Les derrotes passen a ser sobretot de mig joc: de 559 que arriben a 6 peces o menys, 553 ja estaven perdudes en entrar-hi.
+- **Torneig contra cinc motors externs** de la [CCRL 40/15](https://www.computerchess.org.uk/ccrl/4040/) (Elo entre 2866 i 3240; 5.003 partides, 10+0,1, un fil, 16 MB, sense taules): **≈3011 ± 9 Elo** en l'escala de la CCRL, amb el nostre maquinari i control de temps (no és un Elo oficial). Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ### Intent de reentrenament amb més dades (no adoptat)
 
@@ -303,6 +310,7 @@ Cada part per separat perd uns 35 Elo, i juntes es sumen. Amb tot activat el mot
 - [x] Taules Syzygy WDL (v0.14.0: 0 diferències contra python-chess en 30.500 posicions; -0,8 ± 6,7 Elo contra la 0.13.7 en 5.000 partides; el guany ha de venir del DTZ)
 - [x] Syzygy DTZ a l'arrel (v0.14.1: 0 diferències de DTZ contra python-chess en 30.500 posicions; +108,7 ± 13,0 Elo en 2.000 partides des de finals guanyats, converteix 1.000 de 1.000 contra 394 sense DTZ)
 - [x] Extensions singulars (v0.14.2: +23,5 ± 6,8 Elo contra la 0.14.1, 5.000 partides a 5+0,05, +1410 =2518 -1072, LOS 100 %; `bench 12` fa un 64 % més de nodes; contra Stockfish limitat ≈2924 al 3000 i ≈2978 al 3190, uns +8 Elo de mitjana sobre la 0.13.7, dins del marge)
+- [x] NNUE amb 8 buckets de sortida i etiquetes exactes de les taules per a 6 peces o menys (v0.15.0: +42,9 ± 7,7 Elo contra la 0.14.2, 5.000 partides a 5+0,05, +1885 =1844 −1271, LOS 100 %; ≈3011 ± 9 Elo en l'escala de la CCRL contra cinc motors externs, 5.003 partides a 10+0,1)
 - [ ] History de continuació (provada i no adoptada; vegeu [History de continuació](#history-de-continuació-provada-i-no-adoptada))
 - [ ] Enviar a CCRL i CEGT, i després a les divisions baixes del TCEC
 

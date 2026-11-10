@@ -17,10 +17,13 @@ public static class Nnue
     public static int Hidden { get; private set; }
     public static bool Loaded => Hidden != 0;
 
+    /// <summary>Nombre de buckets de sortida (1 = xarxa sense buckets, 8 = per nombre de peces).</summary>
+    public static int Buckets { get; private set; } = 1;
+
     static short[] _l0w = Array.Empty<short>(); // [768][Hidden]
     static short[] _l0b = Array.Empty<short>(); // [Hidden]
-    static short[] _l1w = Array.Empty<short>(); // [2 * Hidden]: bàndol que juga, després l'altre
-    static int _l1b;
+    static short[] _l1w = Array.Empty<short>(); // [Buckets][2 * Hidden]: bàndol que juga, després l'altre
+    static short[] _l1b = Array.Empty<short>(); // [Buckets]
 
     /// <summary>Carrega la xarxa. Retorna false si el fitxer no existeix o no té la mida d'una xarxa 768 -> N -> 1.</summary>
     public static bool Load(string path, out string error)
@@ -52,12 +55,16 @@ public static class Nnue
         error = "";
         try
         {
-            // Mida = (768N + N + 2N + 1) * 2 bytes, arrodonida a múltiple de 64.
-            int h = 0;
-            for (int n = 16; n <= 4096; n += 16)
+            // Mida = (768N + N + B*2N + B) * 2 bytes, arrodonida a múltiple de 64, amb B = 1 (sense buckets) o 8.
+            int h = 0, nb = 1;
+            foreach (int b in new[] { 1, 8 })
             {
-                int bytes = (768 * n + n + 2 * n + 1) * 2;
-                if ((bytes + 63) / 64 * 64 == raw.Length) { h = n; break; }
+                for (int n = 16; n <= 4096 && h == 0; n += 16)
+                {
+                    int bytes = (768 * n + n + b * 2 * n + b) * 2;
+                    if ((bytes + 63) / 64 * 64 == raw.Length) { h = n; nb = b; }
+                }
+                if (h != 0) break;
             }
             if (h == 0) { error = $"mida inesperada ({raw.Length} bytes)"; return false; }
 
@@ -65,8 +72,9 @@ public static class Nnue
             Buffer.BlockCopy(raw, 0, s, 0, raw.Length);
             _l0w = s[..(768 * h)];
             _l0b = s[(768 * h)..(769 * h)];
-            _l1w = s[(769 * h)..(771 * h)];
-            _l1b = s[771 * h];
+            _l1w = s[(769 * h)..((769 + 2 * nb) * h)];
+            _l1b = s[((769 + 2 * nb) * h)..((769 + 2 * nb) * h + nb)];
+            Buckets = nb;
             Hidden = h;
             return true;
         }
@@ -142,10 +150,17 @@ public static class Nnue
         }
     }
 
-    /// <summary>Avaluació en centipeons des del bàndol que juga.</summary>
-    public static int Evaluate(ReadOnlySpan<short> acc, int side)
+    /// <summary>
+    /// Bucket de sortida d'una posició: per nombre total de peces (reis inclosos), de 2 a 32, en <see cref="Buckets"/> trams iguals.
+    /// Ha de coincidir amb <c>MaterialCount</c> de bullet: (peces - 2) / (32 / Buckets).
+    /// </summary>
+    public static int BucketOf(int pieceCount) => Buckets == 1 ? 0 : Math.Clamp((pieceCount - 2) / (32 / Buckets), 0, Buckets - 1);
+
+    /// <summary>Avaluació en centipeons des del bàndol que juga. <paramref name="bucket"/>: vegeu <see cref="BucketOf"/>.</summary>
+    public static int Evaluate(ReadOnlySpan<short> acc, int side, int bucket = 0)
     {
         int h = Hidden;
+        int wo = bucket * 2 * h; // desplaçament dels pesos de sortida d'aquest bucket
         var us = acc.Slice(side * h, h);
         var them = acc.Slice((side ^ 1) * h, h);
         long sum = 0;
@@ -160,8 +175,8 @@ public static class Nnue
             {
                 var a = Vector.Min(Vector.Max(new Vector<short>(us[i..]), zero), qa);
                 var b = Vector.Min(Vector.Max(new Vector<short>(them[i..]), zero), qa);
-                var wa = new Vector<short>(_l1w.AsSpan(i));
-                var wb = new Vector<short>(_l1w.AsSpan(h + i));
+                var wa = new Vector<short>(_l1w.AsSpan(wo + i));
+                var wb = new Vector<short>(_l1w.AsSpan(wo + h + i));
                 Vector.Widen(a, out var a0, out var a1);
                 Vector.Widen(b, out var b0, out var b1);
                 Vector.Widen(wa, out var wa0, out var wa1);
@@ -176,11 +191,11 @@ public static class Nnue
             {
                 int a = Math.Clamp((int)us[i], 0, Qa);
                 int b = Math.Clamp((int)them[i], 0, Qa);
-                sum += a * a * _l1w[i] + b * b * _l1w[h + i];
+                sum += a * a * _l1w[wo + i] + b * b * _l1w[wo + h + i];
             }
         }
         sum /= Qa;
-        sum += _l1b;
+        sum += _l1b[bucket];
         return (int)(sum * Scale / (Qa * Qb));
     }
 }
