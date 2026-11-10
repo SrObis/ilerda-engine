@@ -75,7 +75,8 @@ public static class Uci
                 case "uci":
                     Send($"id name {Name} {Version}");
                     Send($"id author {Author}");
-                    Send("option name Hash type spin default 64 min 1 max 4096");
+                    Send("option name Hash type spin default 64 min 1 max 16384");
+                    Send("option name Clear Hash type button");
                     Send("option name Threads type spin default 1 min 1 max 256");
                     Send("option name MoveOverhead type spin default 20 min 0 max 5000");
                     Send("option name LmrDiv type spin default 225 min 50 max 1000");
@@ -119,11 +120,19 @@ public static class Uci
                         Send($"info string {tbMsg}");
                         break;
                     }
+                    // setoption name Clear Hash (botó): buida la taula de transposició i les taules d'història
+                    if (t.Length >= 4 && t[1] == "name" && t[2].Equals("Clear", StringComparison.OrdinalIgnoreCase)
+                        && t[3].Equals("Hash", StringComparison.OrdinalIgnoreCase))
+                    {
+                        StopSearch();
+                        searcher.NewGame();
+                        break;
+                    }
                     // setoption name Hash value <mb>
                     if (t.Length >= 5 && t[1] == "name" && t[3] == "value" && int.TryParse(t[4], out int ov))
                     {
                         StopSearch();
-                        if (t[2].Equals("Hash", StringComparison.OrdinalIgnoreCase)) searcher.SetHash(Math.Clamp(ov, 1, 4096));
+                        if (t[2].Equals("Hash", StringComparison.OrdinalIgnoreCase)) searcher.SetHash(Math.Clamp(ov, 1, 16384));
                         else if (t[2].Equals("Threads", StringComparison.OrdinalIgnoreCase)) searcher.SetThreads(ov);
                         else if (t[2].Equals("MoveOverhead", StringComparison.OrdinalIgnoreCase)) moveOverhead = Math.Clamp(ov, 0, 5000);
                         else if (t[2].Equals("Tm", StringComparison.OrdinalIgnoreCase)) tm = Math.Clamp(ov, 0, 1);

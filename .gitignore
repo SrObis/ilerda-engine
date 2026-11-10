@@ -24,3 +24,6 @@ nets/
 
 # PGN de les proves de matches (pesen desenes de MB; es poden tornar a generar)
 tools/resultat*.pgn
+
+# Executables de les versions (es pugen com a Release a GitHub)
+dist/

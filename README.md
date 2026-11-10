@@ -43,6 +43,12 @@ La suite de perft ha de passar sempre abans de tocar la cerca: si falla, hi ha u
 
 Per jugar-hi, afegeix l'executable (`src/Ilerda/bin/Release/net8.0/`) a Arena, En Croissant o Cute Chess com a motor UCI.
 
+## Executables per jugar torneigs
+
+`.\tools\publicar.ps1` genera a `dist\` els executables de la versió actual per a **Windows x64** i **Linux x64** (autocontinguts, un sol fitxer, no cal tenir .NET) i un `.zip` de cada un amb la llicència. No es fa servir NativeAOT a propòsit: la xarxa NNUE usa `Vector<T>`, que amb JIT tria AVX2 (o el que tingui la CPU) en executar-se, i amb AOT quedaria fixada al mínim (SSE2). Cal una CPU x64 qualsevol; no hi ha instruccions específiques.
+
+Opcions UCI principals: `Hash` (64 MB per defecte, fins a 16.384 MB: més enllà el límit de mida dels arrays de .NET no deixaria fer la taula més gran), `Clear Hash` (botó: buida la taula de transposició i les taules d'història), `Threads` (1 per defecte, fins a 256), `MoveOverhead`, `SyzygyPath` (carpetes separades per `;` a Windows i `:` a Linux) i `EvalFile`. No hi ha `Ponder`.
+
 ## Comparar versions
 
 Cada canvi s'ha de mesurar. `dotnet build` sobreescriu sempre `bin/Release/net8.0`, així que cada versió es guarda abans de seguir canviant el codi:
