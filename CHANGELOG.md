@@ -1,5 +1,19 @@
 # Canvis
 
+## 0.15.1 — Executables per a tornejos
+
+**Problema.** La 0.15.0 no estava preparada per enviar-la a les llistes de proves (CCRL, CEGT): no hi havia executables publicats i el límit de `Hash` era baix per a les màquines de torneig.
+
+**Canvi.**
+
+- `Hash` fins a 16.384 MB (el límit de mida dels arrays de .NET) i opció nova `Clear Hash` (botó: buida la taula de transposició i les taules d'història).
+- `tools/publicar.ps1`: executables autocontinguts d'un sol fitxer per a Windows x64 i Linux x64 a `dist/`, amb la llicència i els avisos de tercers.
+- La integració contínua publica també l'executable de Linux i hi passa `test` (perft i signatura del bench), per comprovar el binari que es distribueix.
+- README: l'exemple de `SyzygyPath` tenia caràcters de control en lloc de les barres de les rutes.
+- `tools/nnue/pgn_a_dades.py`: converteix els PGN dels matxs al format de `datagen`.
+
+**Resultat.** La cerca i l'avaluació són les de la 0.15.0: `bench 12` fa els mateixos 10.841.872 nodes.
+
 ## 0.15.0 — NNUE amb buckets de sortida i etiquetes de les taules
 
 **Problema.** Les anàlisis de les derrotes de la 0.14.2 deien que la xarxa veia les posicions més bones del que eren, sobretot als finals: amb +0,5 a +1,0 d'avaluació en el mig joc amb material igual, la puntuació real era del 47,8 % (menys de la meitat), i amb +1 a +2, del 53,7 %. A les dades d'entrenament hi havia una causa clara: el resultat d'una partida de `datagen` és l'etiqueta de totes les seves posicions, també de finals de 6 peces o menys que el motor va jugar malament o que es van adjudicar.
