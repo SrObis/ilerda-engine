@@ -4,7 +4,7 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. Ilerda és el nom romà de Lleida.
 
-**Estat:** v0.15.0 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, reducció iterativa interna (IIR), LMR, reverse futility i futility, extensions singulars, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 amb 8 buckets de sortida segons el nombre de peces, incrustada a l'executable; les taules PeSTO es conserven com a alternativa) i lectura de taules Syzygy (WDL i DTZ) de fins a 6 peces. Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.15.1 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, reducció iterativa interna (IIR), LMR, reverse futility i futility, extensions singulars, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 amb 8 buckets de sortida segons el nombre de peces, incrustada a l'executable; les taules PeSTO es conserven com a alternativa) i lectura de taules Syzygy (WDL i DTZ) de fins a 6 peces. Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
@@ -137,7 +137,7 @@ Mitjana d'unes **2.910**, uns **+35 Elo** per sobre de la 0.13.2 contra un adver
 Des de la **0.14.0** Ilerda llegeix taules de finals Syzygy de fins a 6 peces: WDL (fitxers `.rtbw`, a la cerca) i, des de la **0.14.1**, DTZ (fitxers `.rtbz`, a l'arrel). El lector és un port a C# del `tbprobe.c` de Fathom (MIT).
 
 ```
-setoption name SyzygyPath value D:	ablebases-4-5;D:	ablebases
+setoption name SyzygyPath value D:\tablebases\3-4-5;D:\tablebases\6
 ```
 
 | Opció | Per defecte | Què fa |

@@ -17,3 +17,11 @@ jobs:
       # perft, claus Zobrist i signatura del bench (nodes de `bench 12`)
       - name: Suite de proves
         run: dotnet run -c Release --no-build --project src/Ilerda -- test
+      # executable autocontingut de Linux, el mateix que publica tools/publicar.ps1
+      - name: Executable de Linux
+        run: |
+          dotnet publish src/Ilerda -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -o dist
+          ./dist/Ilerda test
+          (printf 'uci\nisready\nposition startpos\ngo depth 10\n'; sleep 10; echo quit) | timeout 60 ./dist/Ilerda > sortida.txt
+          grep '^info depth 10 ' sortida.txt
+          grep '^bestmove ' sortida.txt
