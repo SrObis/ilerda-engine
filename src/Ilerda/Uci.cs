@@ -31,6 +31,21 @@ public static class Uci
         "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
     };
 
+    /// <summary>Nodes del bench: cerca de profunditat fixa sobre <see cref="BenchFens"/> (determinista amb Threads=1).</summary>
+    public static long RunBench(Searcher searcher, int depth)
+    {
+        long total = 0;
+        var bp = new Position();
+        foreach (var fen in BenchFens)
+        {
+            searcher.NewGame();
+            bp.SetFen(fen);
+            searcher.Think(bp, depth, 0, null);
+            total += searcher.Nodes;
+        }
+        return total;
+    }
+
     public static void Loop()
     {
         var pos = new Position();
@@ -158,16 +173,8 @@ public static class Uci
                     // (determinista amb Threads=1).
                     StopSearch();
                     int bdepth = t.Length > 1 ? int.Parse(t[1]) : 12;
-                    long total = 0;
                     var bsw = System.Diagnostics.Stopwatch.StartNew();
-                    var bp = new Position();
-                    foreach (var fen in BenchFens)
-                    {
-                        searcher.NewGame();
-                        bp.SetFen(fen);
-                        searcher.Think(bp, bdepth, 0, null);
-                        total += searcher.Nodes;
-                    }
+                    long total = RunBench(searcher, bdepth);
                     long bms = Math.Max(1, bsw.ElapsedMilliseconds);
                     Send($"{total} nodes {total * 1000 / bms} nps");
                     break;

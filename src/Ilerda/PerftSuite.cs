@@ -40,6 +40,24 @@ public static class PerftSuite
         return true;
     }
 
+    /// <summary>
+    /// Signatura de la versió: nodes de `bench 12` amb un sol fil. Si canvia sense haver tocat la cerca
+    /// a propòsit (refactor, optimització de velocitat), hi ha un error. Quan es canvia la cerca o la xarxa,
+    /// s'actualitza aquest valor amb la sortida de `bench`.
+    /// </summary>
+    public const long ExpectedBench = 10_841_872;
+    const int BenchDepth = 12;
+
+    /// <summary>Retorna true si el total de nodes del bench coincideix amb <see cref="ExpectedBench"/>.</summary>
+    public static bool RunBench(Action<string> output)
+    {
+        var searcher = new Searcher();
+        long got = Uci.RunBench(searcher, BenchDepth);
+        bool pass = got == ExpectedBench;
+        output($"{(pass ? "OK  " : "FAIL")} bench {BenchDepth}: {got} nodes (esperat {ExpectedBench})");
+        return pass;
+    }
+
     /// <summary>Retorna true si tots els recomptes coincideixen.</summary>
     public static bool Run(Action<string> output)
     {

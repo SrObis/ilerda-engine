@@ -8,7 +8,9 @@ Nnue.LoadEmbedded();
 //   ilerda test                  -> suite de perft; surt amb codi 1 si alguna comprovació falla
 if (args.Length >= 1 && args[0] == "test")
 {
-    return PerftSuite.Run(Console.WriteLine) ? 0 : 1;
+    bool perftOk = PerftSuite.Run(Console.WriteLine);
+    bool benchOk = PerftSuite.RunBench(Console.WriteLine);
+    return perftOk && benchOk ? 0 : 1;
 }
 
 //   ilerda datagen <partides> <nodes> <fitxer> [fils] [llavor] [llibre.epd]  -> partides d'autojoc per generar dades

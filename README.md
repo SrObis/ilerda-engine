@@ -37,6 +37,8 @@ dotnet run -c Release --project src/Ilerda                # mode UCI
 
 La suite de perft ha de passar sempre abans de tocar la cerca: si falla, hi ha un error al generador de moviments.
 
+`test` també comprova la signatura del `bench 12` (10.841.872 nodes amb un fil, constant `ExpectedBench` a `PerftSuite.cs`): si canvia sense haver tocat la cerca o la xarxa a propòsit, hi ha un error. Quan es canvia a propòsit, s'actualitza la constant. GitHub Actions (`.github/workflows/test.yml`) executa `test` a cada `push` i `pull request`.
+
 Per jugar-hi, afegeix l'executable (`src/Ilerda/bin/Release/net8.0/`) a Arena, En Croissant o Cute Chess com a motor UCI.
 
 ## Comparar versions
