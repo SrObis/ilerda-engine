@@ -1,5 +1,32 @@
 # Canvis
 
+## 0.15.0 — NNUE amb buckets de sortida i etiquetes de les taules
+
+**Problema.** Les anàlisis de les derrotes de la 0.14.2 deien que la xarxa veia les posicions més bones del que eren, sobretot als finals: amb +0,5 a +1,0 d'avaluació en el mig joc amb material igual, la puntuació real era del 47,8 % (menys de la meitat), i amb +1 a +2, del 53,7 %. A les dades d'entrenament hi havia una causa clara: el resultat d'una partida de `datagen` és l'etiqueta de totes les seves posicions, també de finals de 6 peces o menys que el motor va jugar malament o que es van adjudicar.
+
+**Canvi.**
+
+- **8 buckets de sortida segons el nombre de peces** (reis inclosos): `bucket = (peces - 2) / 4`, de 0 a 7 (la fórmula de `MaterialCount::<8>` de bullet). La capa de sortida té un joc de pesos per bucket; la capa oculta és la mateixa (768 → 256 ×2). `Nnue.cs` detecta el format per la mida del fitxer (401.984 bytes amb 8 buckets) i continua llegint xarxes sense buckets; `Eval.cs` tria el bucket.
+- **Etiquetes exactes per a les posicions de 6 peces o menys.** Nova comanda `ilerda tbrelabel entrada sortida "ruta/3-4-5;ruta/6" fils`: per a cada posició de `datagen` ("FEN | puntuació | resultat") amb 6 peces o menys, substitueix el resultat de la partida pel WDL de Syzygy (les victòries "maleïdes" per la regla dels 50 compten com a taules). La puntuació no es toca. Sobre `mix2.txt` (109,2 M de línies): 10,7 M de posicions amb taula (9,8 %) i **1,86 M de resultats canviats** (0,81 M a victòria blanca, 0,83 M a victòria negra, 0,21 M a taules), en 2,1 minuts.
+- **Xarxa nova** entrenada amb `mix2-tb.txt` i el mateix calendari que l'anterior (256 neurones, 20 superbatches, StepLR, WDL 0,75), a una T4 de Kaggle en uns 6 minuts. Incrustada a `src/Ilerda/nets/ilerda-256.bin`.
+- Quadern `tools/nnue/ilerda-train-buckets.ipynb` corregit: el fitxer d'exemple de bullet s'escriu sobre `examples/progression/2_output_buckets.rs` (cargo només troba els exemples ja registrats).
+- `bench 12` fa 10.841.872 nodes (amb la xarxa antiga, 11.149.241) i la velocitat és d'uns 1,95 M de nodes per segon, igual que abans.
+
+**Resultat.** 5.000 partides contra la 0.14.2 (xarxa antiga; mateix executable, 5+0,05, 6 simultànies, sense taules): +1885 =1844 −1271, 56,1 %, **+42,9 ± 7,7 Elo** (LOS 100 %). A les primeres 504 partides era +53; va baixar fins a +33 a les 2.222 i es va quedar entre +41 i +43.
+
+Les 1.271 derrotes de la xarxa nova acaben totes en mat excepte 2 per temps; amb 5 peces o menys només 344 (950 de les 1.885 de la xarxa antiga) i 556 amb 6–8. De les 559 que arriben a 6 peces o menys, 553 ja estaven perdudes en entrar-hi segons les taules: es perd abans, al mig joc. En 351 derrotes la xarxa va arribar a veure +2,0 o més, i en 288 d'elles amb el material igual. Calibratge (primera aparició de cada tram per partida, mig joc amb material igual):
+
+| Avaluació | Xarxa nova | Xarxa antiga |
+|---|---|---|
+| +0,5 a +1 | 60,2 % | 47,8 % |
+| +1 a +2 | 64,2 % | 53,7 % |
+| +2 a +3 | 72,5 % | 64,7 % |
+| +3 o més | 82,1 % | 76,0 % |
+
+La xarxa nova també és 43 Elo més forta, i això explica una part de la millora de la taula: no se separen del tot el calibratge i la força. Continua una mica optimista als trams alts.
+
+**Contra altres motors.** Torneig de 5.003 partides, 10+0,1, 16 MB de hash, un fil i sense taules, contra cinc motors externs de la llista [CCRL 40/15](https://www.computerchess.org.uk/ccrl/4040/) (revisada el 7 de novembre de 2026) amb Elo entre 2866 i 3240 (uns 1.000 partides amb cadascun). Amb l'Elo de la llista com a referència de cada rival, la mitjana ponderada surt a **≈3011 ± 9 Elo**, i les cinc estimacions queden entre 2988 i 3049, sense cap tendència segons la força del rival. És una xifra en l'escala de la CCRL però amb el nostre maquinari i control de temps, no un Elo oficial; la 0.14.2 deu quedar uns 40 Elo per sota.
+
 ## 0.14.2 — Extensions singulars
 
 **Problema.** Quan la jugada de la taula de transposició és molt millor que totes les altres, la cerca li dedica la mateixa profunditat que a qualsevol jugada. Les jugades forçades (una sola resposta bona) es veuen massa tard.
