@@ -40,12 +40,12 @@ public sealed class Searcher
     }
 
     // Ordenació de jugades tranquil·les: killers (2 per ply) i history [bàndol, des de, a].
-    readonly int[,] _killers = new int[128, 2];
-    readonly int[,,] _history = new int[2, 64, 64];
+    readonly int[] _killers = new int[128 * 2]; // [ply * 2 + i]
+    readonly int[] _history = new int[2 * 64 * 64]; // [(bàndol * 64 + des de) * 64 + a]
     const int HistoryMax = 6000;
 
     // Reducció LMR segons profunditat i número de jugada: 0,75 + ln(d) * ln(m) / 2,25.
-    int[,] _lmr = BuildLmrTable(2.25);
+    int[] _lmr = BuildLmrTable(2.25); // [profunditat * 64 + jugada]
     int _lmrStart = 5;   // primera jugada (comptant des d'1) que es pot reduir
     int _lmrHist = 2500; // cada tants punts de history, la reducció baixa 1
 
@@ -59,7 +59,7 @@ public sealed class Searcher
     // (puntuació de la cerca - avaluació de la xarxa), en 1/CorrGrain de centipeó, i s'afegeix a l'avaluació.
     // Així la cerca compensa els errors sistemàtics de la xarxa en posicions que s'assemblen.
     const int CorrGrain = 256, CorrSize = 16384, CorrLimit = 100;
-    readonly int[,] _corr = new int[2, CorrSize];
+    readonly int[] _corr = new int[2 * CorrSize]; // [bàndol * CorrSize + índex]
     int _tbProbeDepth = 1;  // profunditat mínima per sondejar les taules Syzygy
     bool _tbRoot = true;    // filtrar les jugades de l'arrel amb les taules (DTZ)
     int _tbProbeLimit = 7;  // nombre màxim de peces per sondejar
@@ -71,12 +71,12 @@ public sealed class Searcher
     // la millor jugada no ha canviat (0, 1, 2, 3, 4 o més). Jugada inestable: més temps; estable: menys.
     static readonly double[] StabilityScale = { 2.0, 1.4, 1.1, 0.9, 0.8 };
 
-    static int[,] BuildLmrTable(double divisor)
+    static int[] BuildLmrTable(double divisor)
     {
-        var t = new int[64, 64];
+        var t = new int[64 * 64];
         for (int d = 1; d < 64; d++)
             for (int m = 1; m < 64; m++)
-                t[d, m] = (int)(0.75 + Math.Log(d) * Math.Log(m) / divisor);
+                t[d * 64 + m] = (int)(0.75 + Math.Log(d) * Math.Log(m) / divisor);
         return t;
     }
 
@@ -137,16 +137,16 @@ public sealed class Searcher
     // History amb "gravity": el canvi es redueix a mesura que el valor s'acosta al màxim, així queda acotat.
     void BumpHistory(int m, int bonus)
     {
-        ref int h = ref _history[_pos.Side, MoveGen.From(m), MoveGen.To(m)];
+        ref int h = ref _history[(_pos.Side * 64 + MoveGen.From(m)) * 64 + MoveGen.To(m)];
         h += bonus - h * Math.Abs(bonus) / HistoryMax;
     }
 
     void UpdateQuietHistory(int m, int ply, int depth, ReadOnlySpan<int> tried)
     {
-        if (ply < 128 && _killers[ply, 0] != m)
+        if (ply < 128 && _killers[ply * 2 + 0] != m)
         {
-            _killers[ply, 1] = _killers[ply, 0];
-            _killers[ply, 0] = m;
+            _killers[ply * 2 + 1] = _killers[ply * 2 + 0];
+            _killers[ply * 2 + 0] = m;
         }
         // Bonus per a la jugada que talla i malus per a les tranquil·les provades abans que no han tallat.
         int bonus = Math.Min(depth * depth, 1500);
@@ -224,9 +224,7 @@ public sealed class Searcher
         _stopped = false;
         Array.Clear(_killers);
         // La history es conserva entre jugades però s'envelleix perquè no domini la cerca nova.
-        for (int c = 0; c < 2; c++)
-            for (int f = 0; f < 64; f++)
-                for (int t = 0; t < 64; t++) _history[c, f, t] /= 2;
+        for (int i = 0; i < _history.Length; i++) _history[i] /= 2;
 
         int stable = 0, prevBest = 0, prevScore = 0;
         for (int depth = 1; depth <= maxDepth; depth++)
@@ -362,7 +360,7 @@ public sealed class Searcher
         int corrIdx = CorrIndex();
         int staticEval = rawEval;
         if (!inCheck && _corrWeight > 0)
-            staticEval = Math.Clamp(rawEval + _corr[_pos.Side, corrIdx] * _corrWeight / (100 * CorrGrain), -Mate + 100, Mate - 100);
+            staticEval = Math.Clamp(rawEval + _corr[_pos.Side * CorrSize + corrIdx] * _corrWeight / (100 * CorrGrain), -Mate + 100, Mate - 100);
 
         // Reverse futility: si l'avaluació estàtica supera beta amb un bon marge a poca profunditat,
         // la posició és tan bona que es talla sense cercar. No en PV, escac ni quan busquem mats.
@@ -384,21 +382,37 @@ public sealed class Searcher
             if (ns >= beta) return ns >= Mate - 100 ? beta : ns;
         }
 
+        // La jugada de la taula es prova abans de generar les altres: si talla (el cas més freqüent), el node
+        // s'estalvia generar i puntuar totes les jugades. L'ordre de la resta és el mateix que abans.
         Span<int> moves = stackalloc int[320];
         Span<int> scores = stackalloc int[320];
-        int n = MoveGen.Generate(_pos, moves);
-        ScoreMoves(moves, scores, n, ttMove, ply);
+        int n = 0;
+        bool generated = false;
+        int ttFull = ttMove != 0 ? MoveGen.PseudoLegal(_pos, ttMove) : 0;
 
         int legal = 0, best = -Inf, bestMove = 0, triedCount = 0;
         Span<int> tried = stackalloc int[64];
-        for (int i = 0; i < n; i++)
+        for (int i = 0; ; i++)
         {
-            PickBest(moves, scores, i, n);
-            int m = moves[i];
+            int m;
+            if (i == 0 && ttFull != 0) m = ttFull;
+            else
+            {
+                if (!generated)
+                {
+                    generated = true;
+                    n = MoveGen.Generate(_pos, moves);
+                    ScoreMoves(moves, scores, n, ttMove, ply);
+                    if (ttFull != 0) PickBest(moves, scores, 0, n); // la de la taula (ja provada) queda a la posició 0
+                }
+                if (i >= n) break;
+                PickBest(moves, scores, i, n);
+                m = moves[i];
+            }
             if (m == excl) continue;
             if (ply == 0 && _master._rootAllowed != null && Array.IndexOf(_master._rootAllowed, m) < 0) continue;
             bool quiet = IsQuiet(m); // abans de fer la jugada
-            int hist = _history[_pos.Side, MoveGen.From(m), MoveGen.To(m)];
+            int hist = _history[(_pos.Side * 64 + MoveGen.From(m)) * 64 + MoveGen.To(m)];
             // Extensió singular: si la jugada de la taula és molt millor que totes les altres (la cerca a
             // profunditat reduïda sense ella queda per sota d'un llindar), s'allarga un nivell. Si fins i tot
             // sense ella es supera beta, la posició es poda (multi-cut).
@@ -415,13 +429,22 @@ public sealed class Searcher
                 else if (sBeta >= beta) return sBeta;
             }
 
+            // Futility: a poca profunditat, una jugada tranquil·la que no dona escac i amb l'avaluació
+            // molt per sota d'alfa no la remuntarà. Sempre es cerca la primera jugada legal.
+            // La legalitat i l'escac es miren sense fer la jugada (excepte l'enroc), que és molt més barat.
+            bool futile = quiet && legal >= 1 && !pv && !inCheck && depth <= 4 && alpha > -Mate + 100
+                          && staticEval + _futMargin * depth <= alpha;
+            if (futile && MoveGen.Flag(m) != MoveGen.FlagCastle)
+            {
+                if (!_pos.QuietLegal(m)) continue;
+                if (!_pos.QuietGivesCheck(m)) { legal++; continue; }
+                futile = false; // dona escac: no es poda
+            }
+
             if (!_pos.MakeMove(m)) continue;
             legal++;
 
-            // Futility: a poca profunditat, una jugada tranquil·la que no dona escac i amb l'avaluació
-            // molt per sota d'alfa no la remuntarà. Sempre es cerca la primera jugada legal.
-            if (quiet && legal > 1 && !pv && !inCheck && depth <= 4 && alpha > -Mate + 100
-                && staticEval + _futMargin * depth <= alpha && !_pos.InCheck())
+            if (futile && !_pos.InCheck())
             {
                 _pos.UnmakeMove();
                 continue;
@@ -434,12 +457,12 @@ public sealed class Searcher
             else
             {
                 bool reduce = quiet && depth >= 3 && legal >= _lmrStart && ply > 0 && !inCheck
-                              && m != _killers[ply, 0] && m != _killers[ply, 1] && !_pos.InCheck();
+                              && m != _killers[ply * 2 + 0] && m != _killers[ply * 2 + 1] && !_pos.InCheck();
                 int r = 0;
                 if (reduce)
                 {
                     // Les jugades amb bon history (que han tallat sovint) es redueixen menys.
-                    r = _lmr[Math.Min(depth, 63), Math.Min(legal, 63)] - hist / _lmrHist;
+                    r = _lmr[Math.Min(depth, 63) * 64 + Math.Min(legal, 63)] - hist / _lmrHist;
                     r = Math.Min(r, depth - 2);
                 }
                 score = r > 0 ? -Negamax(depth - 1 + ext - r, -alpha - 1, -alpha, ply + 1) : alpha + 1;
@@ -480,7 +503,7 @@ public sealed class Searcher
             && !(bound == Bound.Lower && best <= staticEval) && !(bound == Bound.Upper && best >= staticEval))
         {
             int target = Math.Clamp(best - rawEval, -CorrLimit, CorrLimit) * CorrGrain;
-            ref int e = ref _corr[_pos.Side, corrIdx];
+            ref int e = ref _corr[_pos.Side * CorrSize + corrIdx];
             e += (target - e) * Math.Min(depth + 1, 16) / 256;
         }
 
@@ -532,16 +555,34 @@ public sealed class Searcher
         int alpha0 = alpha;
         if (stand > alpha) alpha = stand;
 
+        // Com a Negamax, la jugada de la taula primer i sense generar; aquí només si és una de les que
+        // la quiescència genera (captura, captura al pas o promoció).
         Span<int> moves = stackalloc int[320];
         Span<int> scores = stackalloc int[320];
-        int n = MoveGen.Generate(_pos, moves, capturesOnly: true);
-        ScoreMoves(moves, scores, n, ttMove);
+        int n = 0;
+        bool generated = false;
+        int ttFull = ttMove != 0 ? MoveGen.PseudoLegal(_pos, ttMove) : 0;
+        if (ttFull != 0 && _pos.Board[MoveGen.To(ttFull)] == -1 && MoveGen.Flag(ttFull) != MoveGen.FlagEp && MoveGen.Promo(ttFull) == 0)
+            ttFull = 0;
 
         int bestMove = 0;
-        for (int i = 0; i < n; i++)
+        for (int i = 0; ; i++)
         {
-            PickBest(moves, scores, i, n);
-            int m = moves[i];
+            int m;
+            if (i == 0 && ttFull != 0) m = ttFull;
+            else
+            {
+                if (!generated)
+                {
+                    generated = true;
+                    n = MoveGen.Generate(_pos, moves, capturesOnly: true);
+                    ScoreMoves(moves, scores, n, ttMove);
+                    if (ttFull != 0) PickBest(moves, scores, 0, n);
+                }
+                if (i >= n) break;
+                PickBest(moves, scores, i, n);
+                m = moves[i];
+            }
             if (!_pos.MakeMove(m)) continue;
             int score = -Quiesce(-beta, -alpha, ply + 1);
             _pos.UnmakeMove();
@@ -573,9 +614,9 @@ public sealed class Searcher
             else if (victim < 0 && ply >= 0 && ply < 128)
             {
                 // Jugada tranquil·la: killers per sobre, després history (< 7000, sota de les captures).
-                if (m == _killers[ply, 0]) score = 8000;
-                else if (m == _killers[ply, 1]) score = 7500;
-                else score = _history[_pos.Side, from, to];
+                if (m == _killers[ply * 2 + 0]) score = 8000;
+                else if (m == _killers[ply * 2 + 1]) score = 7500;
+                else score = _history[(_pos.Side * 64 + from) * 64 + to];
             }
             scores[i] = score;
         }

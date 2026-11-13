@@ -59,7 +59,7 @@ public sealed class Position
         if (_accBuf.Length < need) Array.Resize(ref _accBuf, Math.Max(need, Math.Max(_accBuf.Length * 2, 160 * AccSize)));
     }
 
-    static readonly ulong[,] ZPiece = new ulong[12, 64];
+    static readonly ulong[] ZPiece = new ulong[12 * 64]; // [peça * 64 + casella]
     static readonly ulong[] ZCastle = new ulong[16];
     static readonly ulong[] ZEp = new ulong[8];
     static readonly ulong ZSide;
@@ -74,7 +74,7 @@ public sealed class Position
             return s * 0x2545F4914F6CDD1DUL;
         }
         for (int p = 0; p < 12; p++)
-            for (int sq = 0; sq < 64; sq++) ZPiece[p, sq] = Next();
+            for (int sq = 0; sq < 64; sq++) ZPiece[p * 64 + sq] = Next();
         for (int i = 0; i < 16; i++) ZCastle[i] = Next();
         for (int i = 0; i < 8; i++) ZEp[i] = Next();
         ZSide = Next();
@@ -85,7 +85,7 @@ public sealed class Position
     {
         ulong k = 0;
         for (int sq = 0; sq < 64; sq++)
-            if (Board[sq] != -1) k ^= ZPiece[Board[sq], sq];
+            if (Board[sq] != -1) k ^= ZPiece[Board[sq] * 64 + sq];
         if (Side == 1) k ^= ZSide;
         k ^= ZCastle[Castling];
         if (Ep != -1) k ^= ZEp[Ep & 7];
@@ -192,7 +192,7 @@ public sealed class Position
 
     void AddPiece(int sq, int piece)
     {
-        Key ^= ZPiece[piece, sq];
+        Key ^= ZPiece[piece * 64 + sq];
         ulong b = 1UL << sq;
         Bb[piece] |= b;
         ByColor[piece / 6] |= b;
@@ -202,7 +202,7 @@ public sealed class Position
     void RemovePiece(int sq)
     {
         int piece = Board[sq];
-        Key ^= ZPiece[piece, sq];
+        Key ^= ZPiece[piece * 64 + sq];
         ulong b = ~(1UL << sq);
         Bb[piece] &= b;
         ByColor[piece / 6] &= b;
@@ -280,12 +280,58 @@ public sealed class Position
     public bool IsAttacked(int sq, int by)
     {
         ulong occ = Occ;
-        if ((Attacks.Pawn[by ^ 1, sq] & Bb[by * 6 + Pc.Pawn]) != 0) return true;
+        if ((Attacks.Pawn[(by ^ 1) * 64 + sq] & Bb[by * 6 + Pc.Pawn]) != 0) return true;
         if ((Attacks.Knight[sq] & Bb[by * 6 + Pc.Knight]) != 0) return true;
         if ((Attacks.King[sq] & Bb[by * 6 + Pc.King]) != 0) return true;
         if ((Attacks.Bishop(sq, occ) & (Bb[by * 6 + Pc.Bishop] | Bb[by * 6 + Pc.Queen])) != 0) return true;
         if ((Attacks.Rook(sq, occ) & (Bb[by * 6 + Pc.Rook] | Bb[by * 6 + Pc.Queen])) != 0) return true;
         return false;
+    }
+
+    /// <summary>Com <see cref="IsAttacked"/>, però amb una ocupació donada (per mirar una jugada sense fer-la).</summary>
+    bool IsAttackedOcc(int sq, int by, ulong occ)
+    {
+        if ((Attacks.Pawn[(by ^ 1) * 64 + sq] & Bb[by * 6 + Pc.Pawn]) != 0) return true;
+        if ((Attacks.Knight[sq] & Bb[by * 6 + Pc.Knight]) != 0) return true;
+        if ((Attacks.King[sq] & Bb[by * 6 + Pc.King]) != 0) return true;
+        if ((Attacks.Bishop(sq, occ) & (Bb[by * 6 + Pc.Bishop] | Bb[by * 6 + Pc.Queen])) != 0) return true;
+        if ((Attacks.Rook(sq, occ) & (Bb[by * 6 + Pc.Rook] | Bb[by * 6 + Pc.Queen])) != 0) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Legalitat d'una jugada tranquil·la pseudolegal (sense captura, promoció ni enroc) sense fer-la.
+    /// Només val si el bàndol que juga no està en escac: llavors una peça que no és el rei només pot
+    /// deixar-lo en escac si estava clavada, i n'hi ha prou de mirar les peces lliscants del rival.
+    /// </summary>
+    public bool QuietLegal(int m)
+    {
+        int from = MoveGen.From(m), to = MoveGen.To(m);
+        int us = Side, them = us ^ 1;
+        ulong occ = (Occ ^ (1UL << from)) | (1UL << to);
+        if (Board[from] % 6 == Pc.King) return !IsAttackedOcc(to, them, occ);
+        int k = KingSquare(us);
+        return (Attacks.Bishop(k, occ) & (Bb[them * 6 + Pc.Bishop] | Bb[them * 6 + Pc.Queen])) == 0
+            && (Attacks.Rook(k, occ) & (Bb[them * 6 + Pc.Rook] | Bb[them * 6 + Pc.Queen])) == 0;
+    }
+
+    /// <summary>True si una jugada tranquil·la (sense captura, promoció ni enroc) dona escac, directe o a la descoberta, sense fer-la.</summary>
+    public bool QuietGivesCheck(int m)
+    {
+        int from = MoveGen.From(m), to = MoveGen.To(m);
+        int us = Side, pt = Board[from] % 6;
+        ulong fb = 1UL << from, tb = 1UL << to;
+        ulong occ = (Occ ^ fb) | tb;
+        int k = KingSquare(us ^ 1);
+        ulong kb = 1UL << k;
+        if (pt == Pc.Pawn && (Attacks.Pawn[us * 64 + to] & kb) != 0) return true;
+        if (pt == Pc.Knight && (Attacks.Knight[to] & kb) != 0) return true;
+        // Peces lliscants pròpies amb la que es mou ja a la casella nova (cobreix l'escac directe i la descoberta).
+        ulong bq = (Bb[us * 6 + Pc.Bishop] | Bb[us * 6 + Pc.Queen]) & ~fb;
+        ulong rq = (Bb[us * 6 + Pc.Rook] | Bb[us * 6 + Pc.Queen]) & ~fb;
+        if (pt == Pc.Bishop || pt == Pc.Queen) bq |= tb;
+        if (pt == Pc.Rook || pt == Pc.Queen) rq |= tb;
+        return (Attacks.Bishop(k, occ) & bq) != 0 || (Attacks.Rook(k, occ) & rq) != 0;
     }
 
     public int KingSquare(int color) => BitOperations.TrailingZeroCount(Bb[color * 6 + Pc.King]);

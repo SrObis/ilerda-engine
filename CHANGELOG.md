@@ -1,5 +1,32 @@
 # Canvis
 
+## 0.15.3 — Segona ronda de velocitat
+
+**Problema.** Després de la 0.15.2 quedaven costos fixos a cada node que no depenen de la xarxa: l'actualització de l'acumulador trossejava un `Span` a cada pas del bucle, les taules de la cerca eren arrays de diverses dimensions (lents a .NET), es generaven i puntuaven totes les jugades abans de provar la de la taula de transposició (que és la que talla gairebé sempre), i la futility feia la jugada i la desfeia només per saber si era legal i si donava escac.
+
+**Canvi.**
+
+- **`Nnue.ApplyDelta` amb vectors de 256 bits llegits per referència** (`Vector256.LoadUnsafe` / `StoreUnsafe`), sense crear un tros de `Span` amb la seva comprovació de límits a cada pas. El camí amb `Vector<T>` es conserva per a les CPU sense vectors de 256 bits. És el canvi que més dona: +9,6 % de nodes per segon tot sol.
+- **Arrays d'una sola dimensió:** `_history`, `_killers`, `_lmr` i `_corr` a la cerca, `ZPiece` a `Position` i `Attacks.Pawn`. `Magic` passa de classe a `struct`, i així cada consulta d'atacs de peça lliscant s'estalvia un salt de punter. +3 %.
+- **La jugada de la taula de transposició es prova abans de generar les altres**, a `Negamax` i a `Quiesce`. `MoveGen.PseudoLegal` reconstrueix la jugada completa (la taula no en desa l'indicador) i comprova que el generador l'hauria produït; a la quiescència només si és captura, captura al pas o promoció.
+- **Futility sense fer la jugada:** `Position.QuietLegal` i `Position.QuietGivesCheck` miren la legalitat i l'escac (directe i a la descoberta) d'una jugada tranquil·la sense moure-la. L'enroc continua pel camí antic.
+- Provat i retirat: desar el resultat d'`InCheck` per posició no donava cap guany mesurable.
+
+**La signatura del bench canvia:** `bench 12` fa 10.877.675 nodes (abans 10.841.872, +0,33 %). La causa és una sola: ara les jugades es puntuen després de cercar la de la taula, i per tant amb la *history* que aquell subarbre ja ha actualitzat. Una variant temporal que puntuava abans, com la 0.15.2, dona els 10.841.872 nodes de sempre: `PseudoLegal`, `QuietLegal` i `QuietGivesCheck` són, doncs, exactament equivalents al codi anterior.
+
+**Resultat.** Uns **+16 %** de nodes per segon respecte de la 0.15.2 (entre +14 % i +19 % segons la passada; ≈2,8 M contra ≈2,45 M al Ryzen 5 5600G), i uns +48 % respecte de la 0.15.1.
+
+Matx contra la 0.15.2 (5.000 partides a 5+0,05, 6 simultànies, `tools/obertures.epd`, un fil): +1485 =2664 −851, 56,3 %, **+44,3 ± 6,6 Elo**. Una sola derrota per temps (de la 0.15.2, partida 341). La profunditat mitjana passa d'11,61 a 11,92. Com a la 0.15.2, és més del que s'espera de la velocitat sola, i a ritmes més lents el guany serà més petit; no s'ha mesurat contra motors externs.
+
+**Anàlisi de les partides** (des del punt de vista de la 0.15.3):
+
+- **Les derrotes es decideixen aviat.** El punt a partir del qual l'avaluació ja no torna a passar de −0,5 arriba amb 20 peces o més en el 80 % de les 851 derrotes (46 % amb 26 o més) i abans de la jugada 30 en el 78 %. Només el 4 % es decideixen amb 12 peces o menys.
+- **En el 20 % de les derrotes s'havia arribat a veure +1,0 o més**, i en el 6 %, +2,0 o més.
+- **L'avaluació oscil·la molt a les taules.** De 2.664 taules, només 73 es queden sempre entre −0,5 i +0,5; en el 32 % la 0.15.3 va arribar a veure +2,0 o més (19 %, +3,0 o més) i en el 26 %, −2,0 o menys. En 911 taules algun dels dos bàndols va veure 3,0 o més, i en 475 d'elles el pic és amb 13 peces o més. La xarxa continua massa segura de posicions que no es guanyen.
+- Per parelles d'obertura (les dues partides amb colors canviats): 122 guanyades 2–0, 469 per 1,5, 619 empatades, 245 per 0,5 i 43 perdudes 0–2.
+
+Com que els dos bàndols tenen la mateixa xarxa i la mateixa cerca, aquesta anàlisi no veu els defectes que comparteixen.
+
 ## 0.15.2 — NNUE més ràpida: acumulador mandrós i producte final amb AVX2
 
 **Problema.** La cerca feia feina de la xarxa que després no es feia servir: `MakeMove` actualitzava l'acumulador (2 × 256 valors) a cada jugada, també a les que es podaven tot seguit per futility o que es tallaven per la taula de transposició sense arribar a avaluar. A més, el producte final de la xarxa eixamplava els valors a 32 bits abans de multiplicar, i cada node posava a zero uns 2,8 KB de llistes de jugades que s'escriuen abans de llegir-les.

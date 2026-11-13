@@ -45,7 +45,7 @@ public static class PerftSuite
     /// a propòsit (refactor, optimització de velocitat), hi ha un error. Quan es canvia la cerca o la xarxa,
     /// s'actualitza aquest valor amb la sortida de `bench`.
     /// </summary>
-    public const long ExpectedBench = 10_841_872;
+    public const long ExpectedBench = 10_877_675;
     const int BenchDepth = 12;
 
     /// <summary>Retorna true si el total de nodes del bench coincideix amb <see cref="ExpectedBench"/>.</summary>

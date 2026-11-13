@@ -36,6 +36,71 @@ public static class MoveGen
         else moves[n++] = Encode(from, to, 0, flag);
     }
 
+    /// <summary>
+    /// Donada una jugada de la taula de transposició (des de, a i promoció, sense l'indicador), retorna la jugada
+    /// completa si <see cref="Generate"/> la generaria en aquesta posició, o 0 si no. Ha de seguir exactament
+    /// les mateixes regles que el generador.
+    /// </summary>
+    public static int PseudoLegal(Position p, int tt)
+    {
+        int from = tt & 63, to = (tt >> 6) & 63, promo = (tt >> 12) & 7;
+        int us = p.Side, them = us ^ 1;
+        int pc = p.Board[from];
+        if (pc == -1 || pc / 6 != us || promo > 4) return 0;
+        int target = p.Board[to];
+        if (target != -1 && target / 6 == us) return 0;
+        ulong tb = 1UL << to;
+        int pt = pc % 6;
+
+        if (pt == Pc.Pawn)
+        {
+            int dir = us == 0 ? 8 : -8;
+            bool last = us == 0 ? to >= 56 : to < 8;
+            if (last != (promo != 0)) return 0;
+            if (to == from + dir) return target == -1 ? Encode(from, to, promo) : 0;
+            if (to == from + 2 * dir)
+            {
+                bool start = us == 0 ? from < 16 : from >= 48;
+                return start && target == -1 && p.Board[from + dir] == -1 ? Encode(from, to, 0, FlagDouble) : 0;
+            }
+            if ((Attacks.Pawn[us * 64 + from] & tb) == 0) return 0;
+            if (target != -1) return Encode(from, to, promo);
+            return to == p.Ep ? Encode(from, to, 0, FlagEp) : 0;
+        }
+
+        if (promo != 0) return 0;
+        ulong occ = p.Occ;
+        switch (pt)
+        {
+            case Pc.Knight: return (Attacks.Knight[from] & tb) != 0 ? Encode(from, to) : 0;
+            case Pc.Bishop: return (Attacks.Bishop(from, occ) & tb) != 0 ? Encode(from, to) : 0;
+            case Pc.Rook: return (Attacks.Rook(from, occ) & tb) != 0 ? Encode(from, to) : 0;
+            case Pc.Queen: return (Attacks.Queen(from, occ) & tb) != 0 ? Encode(from, to) : 0;
+        }
+
+        // Rei: pas normal o enroc (amb les mateixes condicions que Generate).
+        if ((Attacks.King[from] & tb) != 0) return Encode(from, to);
+        if (us == 0 && from == 4)
+        {
+            if (to == 6 && (p.Castling & 1) != 0 && p.Board[5] == -1 && p.Board[6] == -1 &&
+                !p.IsAttacked(4, them) && !p.IsAttacked(5, them) && !p.IsAttacked(6, them))
+                return Encode(4, 6, 0, FlagCastle);
+            if (to == 2 && (p.Castling & 2) != 0 && p.Board[1] == -1 && p.Board[2] == -1 && p.Board[3] == -1 &&
+                !p.IsAttacked(4, them) && !p.IsAttacked(3, them) && !p.IsAttacked(2, them))
+                return Encode(4, 2, 0, FlagCastle);
+        }
+        else if (us == 1 && from == 60)
+        {
+            if (to == 62 && (p.Castling & 4) != 0 && p.Board[61] == -1 && p.Board[62] == -1 &&
+                !p.IsAttacked(60, them) && !p.IsAttacked(61, them) && !p.IsAttacked(62, them))
+                return Encode(60, 62, 0, FlagCastle);
+            if (to == 58 && (p.Castling & 8) != 0 && p.Board[57] == -1 && p.Board[58] == -1 && p.Board[59] == -1 &&
+                !p.IsAttacked(60, them) && !p.IsAttacked(59, them) && !p.IsAttacked(58, them))
+                return Encode(60, 58, 0, FlagCastle);
+        }
+        return 0;
+    }
+
     /// <summary>Genera moviments pseudolegals (la legalitat es comprova a MakeMove).</summary>
     public static int Generate(Position p, Span<int> moves, bool capturesOnly = false)
     {
@@ -61,7 +126,7 @@ public static class MoveGen
                     moves[n++] = Encode(from, to + dir, 0, FlagDouble);
             }
 
-            ulong caps = Attacks.Pawn[us, from] & theirOcc;
+            ulong caps = Attacks.Pawn[(us) * 64 + from] & theirOcc;
             while (caps != 0)
             {
                 int t = BitOperations.TrailingZeroCount(caps);
@@ -69,7 +134,7 @@ public static class MoveGen
                 AddPawnMove(moves, ref n, from, t, promo, 0);
             }
 
-            if (p.Ep >= 0 && (Attacks.Pawn[us, from] & (1UL << p.Ep)) != 0)
+            if (p.Ep >= 0 && (Attacks.Pawn[(us) * 64 + from] & (1UL << p.Ep)) != 0)
                 moves[n++] = Encode(from, p.Ep, 0, FlagEp);
         }
 

@@ -9,8 +9,8 @@ public static class Attacks
     public static readonly ulong[] Knight = new ulong[64];
     public static readonly ulong[] King = new ulong[64];
 
-    /// <summary>Pawn[color, sq] = caselles que ataca un peó d'aquest color situat a sq.</summary>
-    public static readonly ulong[,] Pawn = new ulong[2, 64];
+    /// <summary>Pawn[color * 64 + sq] = caselles que ataca un peó d'aquest color situat a sq.</summary>
+    public static readonly ulong[] Pawn = new ulong[128];
 
     static readonly (int df, int dr)[] BishopDirs = { (1, 1), (1, -1), (-1, 1), (-1, -1) };
     static readonly (int df, int dr)[] RookDirs = { (1, 0), (-1, 0), (0, 1), (0, -1) };
@@ -25,8 +25,8 @@ public static class Attacks
             int f = sq & 7, r = sq >> 3;
             foreach (var (df, dr) in knightDeltas) Knight[sq] |= Bit(f + df, r + dr);
             foreach (var (df, dr) in kingDeltas) King[sq] |= Bit(f + df, r + dr);
-            Pawn[0, sq] = Bit(f - 1, r + 1) | Bit(f + 1, r + 1);
-            Pawn[1, sq] = Bit(f - 1, r - 1) | Bit(f + 1, r - 1);
+            Pawn[sq] = Bit(f - 1, r + 1) | Bit(f + 1, r + 1);
+            Pawn[64 + sq] = Bit(f - 1, r - 1) | Bit(f + 1, r - 1);
         }
     }
 
@@ -129,13 +129,13 @@ public static class Attacks
 
     public static ulong Bishop(int sq, ulong occ)
     {
-        var m = BishopMagics[sq];
+        ref readonly Magic m = ref BishopMagics[sq];
         return BishopTable[m.Offset + (int)(((occ & m.Mask) * m.Number) >> m.Shift)];
     }
 
     public static ulong Rook(int sq, ulong occ)
     {
-        var m = RookMagics[sq];
+        ref readonly Magic m = ref RookMagics[sq];
         return RookTable[m.Offset + (int)(((occ & m.Mask) * m.Number) >> m.Shift)];
     }
 

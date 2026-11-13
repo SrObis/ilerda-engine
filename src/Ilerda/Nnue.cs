@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
@@ -124,6 +125,38 @@ public static class Nnue
     public static void ApplyDelta(ReadOnlySpan<short> src, Span<short> dst, ReadOnlySpan<int> adds, ReadOnlySpan<int> subs)
     {
         int h = Hidden, step = Vector<short>.Count;
+        if (Vector256.IsHardwareAccelerated && h % 16 == 0)
+        {
+            // Camí ràpid: vectors de 256 bits llegits i escrits per referència, sense crear un tros de Span
+            // (amb la seva comprovació de límits) a cada pas. Fa les mateixes sumes que el camí genèric de sota.
+            ref short w = ref MemoryMarshal.GetArrayDataReference(_l0w);
+            for (int c = 0; c < 2; c++)
+            {
+                ref short s = ref MemoryMarshal.GetReference(src.Slice(c * h, h));
+                ref short d = ref MemoryMarshal.GetReference(dst.Slice(c * h, h));
+                ref short a0 = ref Unsafe.Add(ref w, Feature(c, adds[0], adds[1]) * h);
+                ref short s0 = ref Unsafe.Add(ref w, Feature(c, subs[0], subs[1]) * h);
+                if (adds.Length == 2 && subs.Length == 2)
+                {
+                    for (nuint i = 0; i < (nuint)h; i += 16)
+                        (Vector256.LoadUnsafe(ref s, i) + Vector256.LoadUnsafe(ref a0, i) - Vector256.LoadUnsafe(ref s0, i)).StoreUnsafe(ref d, i);
+                }
+                else if (adds.Length == 2)
+                {
+                    ref short s1 = ref Unsafe.Add(ref w, Feature(c, subs[2], subs[3]) * h);
+                    for (nuint i = 0; i < (nuint)h; i += 16)
+                        (Vector256.LoadUnsafe(ref s, i) + Vector256.LoadUnsafe(ref a0, i) - Vector256.LoadUnsafe(ref s0, i) - Vector256.LoadUnsafe(ref s1, i)).StoreUnsafe(ref d, i);
+                }
+                else
+                {
+                    ref short a1 = ref Unsafe.Add(ref w, Feature(c, adds[2], adds[3]) * h);
+                    ref short s1 = ref Unsafe.Add(ref w, Feature(c, subs[2], subs[3]) * h);
+                    for (nuint i = 0; i < (nuint)h; i += 16)
+                        (Vector256.LoadUnsafe(ref s, i) + Vector256.LoadUnsafe(ref a0, i) + Vector256.LoadUnsafe(ref a1, i) - Vector256.LoadUnsafe(ref s0, i) - Vector256.LoadUnsafe(ref s1, i)).StoreUnsafe(ref d, i);
+                }
+            }
+            return;
+        }
         for (int c = 0; c < 2; c++)
         {
             var s = src.Slice(c * h, h);
