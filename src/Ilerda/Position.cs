@@ -32,14 +32,26 @@ public sealed class Position
     public ulong Key;
 
     // Pila d'acumuladors NNUE (blanques i negres, N neurones cadascun): una entrada per jugada feta.
-    // MakeMove calcula la nova a partir de l'anterior en una sola passada i UnmakeMove només torna enrere,
-    // així que desfer una jugada no costa res i les jugades il·legals no toquen l'acumulador.
+    // MakeMove només apunta quines característiques canvien (_accDelta) i UnmakeMove només torna enrere.
+    // L'acumulador es calcula de forma mandrosa, quan es demana (Acc): a partir de l'últim calculat s'apliquen
+    // els canvis pendents en una sola passada per jugada. Així les jugades que es poden o es tallen per la
+    // taula de transposició sense avaluar no paguen l'actualització.
     short[] _accBuf = Array.Empty<short>();
     int _accTop;
     static int AccSize => 2 * Nnue.Hidden;
+    const int DeltaSize = 10; // [0] = n. d'afegides * 2, [1] = n. de tretes * 2, [2..5] afegides, [6..9] tretes (parells peça, casella)
+    readonly int[] _accDelta = new int[2049 * DeltaSize]; // una entrada per jugada feta, com _stack
+    readonly bool[] _accDone = new bool[2049];
 
     /// <summary>Acumulador NNUE de la posició actual.</summary>
-    public ReadOnlySpan<short> Acc => _accBuf.AsSpan(_accTop * AccSize, AccSize);
+    public ReadOnlySpan<short> Acc
+    {
+        get
+        {
+            if (!_accDone[_accTop]) MaterializeAcc();
+            return _accBuf.AsSpan(_accTop * AccSize, AccSize);
+        }
+    }
 
     void EnsureAcc(int top)
     {
@@ -131,6 +143,7 @@ public sealed class Position
         {
             c.EnsureAcc(0);
             Acc.CopyTo(c._accBuf);
+            c._accDone[0] = true;
         }
         c._histCount = _histCount;
         return c;
@@ -145,6 +158,7 @@ public sealed class Position
         {
             Acc.CopyTo(_accBuf);
             _accTop = 0;
+            _accDone[0] = true;
         }
     }
 
@@ -213,6 +227,7 @@ public sealed class Position
         Nnue.Reset(acc);
         for (int sq = 0; sq < 64; sq++)
             if (Board[sq] != -1) Nnue.Add(acc, Board[sq], sq);
+        _accDone[_accTop] = true;
     }
 
     public void SetFen(string fen)
@@ -327,24 +342,39 @@ public sealed class Position
 
         if (Nnue.Loaded)
         {
-            // Canvis de característiques: parells (peça, casella) afegits i trets.
-            Span<int> adds = stackalloc int[4], subs = stackalloc int[4];
+            // Canvis de característiques: parells (peça, casella) afegits i trets. Només s'apunten;
+            // l'acumulador es calcula quan algú el demana (vegeu Acc).
+            _accTop++;
+            var d = _accDelta.AsSpan(_accTop * DeltaSize, DeltaSize);
             int na = 0, ns = 0;
-            subs[ns++] = piece; subs[ns++] = from;
-            adds[na++] = promo != 0 ? us * 6 + promo : piece; adds[na++] = to;
-            if (captured != -1) { subs[ns++] = captured; subs[ns++] = flag == MoveGen.FlagEp ? epCapSq : to; }
+            d[6 + ns++] = piece; d[6 + ns++] = from;
+            d[2 + na++] = promo != 0 ? us * 6 + promo : piece; d[2 + na++] = to;
+            if (captured != -1) { d[6 + ns++] = captured; d[6 + ns++] = flag == MoveGen.FlagEp ? epCapSq : to; }
             else if (flag == MoveGen.FlagCastle)
             {
                 int rook = us * 6 + Pc.Rook;
                 int rf = to > from ? to + 1 : to - 2, rt = to > from ? to - 1 : to + 1;
-                subs[ns++] = rook; subs[ns++] = rf;
-                adds[na++] = rook; adds[na++] = rt;
+                d[6 + ns++] = rook; d[6 + ns++] = rf;
+                d[2 + na++] = rook; d[2 + na++] = rt;
             }
-            EnsureAcc(_accTop + 1);
-            Nnue.ApplyDelta(_accBuf.AsSpan(_accTop * AccSize, AccSize), _accBuf.AsSpan((_accTop + 1) * AccSize, AccSize), adds[..na], subs[..ns]);
-            _accTop++;
+            d[0] = na; d[1] = ns;
+            _accDone[_accTop] = false;
         }
         return true;
+    }
+
+    /// <summary>Calcula els acumuladors pendents, des de l'últim calculat fins a la posició actual.</summary>
+    void MaterializeAcc()
+    {
+        int i = _accTop;
+        while (!_accDone[i]) i--;
+        EnsureAcc(_accTop);
+        for (i++; i <= _accTop; i++)
+        {
+            var d = _accDelta.AsSpan(i * DeltaSize, DeltaSize);
+            Nnue.ApplyDelta(_accBuf.AsSpan((i - 1) * AccSize, AccSize), _accBuf.AsSpan(i * AccSize, AccSize), d.Slice(2, d[0]), d.Slice(6, d[1]));
+            _accDone[i] = true;
+        }
     }
 
     /// <summary>Passa el torn sense moure (per a la poda null move). Només s'ha de fer fora d'escac.</summary>

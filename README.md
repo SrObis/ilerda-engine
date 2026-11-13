@@ -4,7 +4,7 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. Ilerda és el nom romà de Lleida.
 
-**Estat:** v0.15.1 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, reducció iterativa interna (IIR), LMR, reverse futility i futility, extensions singulars, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 amb 8 buckets de sortida segons el nombre de peces, incrustada a l'executable; les taules PeSTO es conserven com a alternativa) i lectura de taules Syzygy (WDL i DTZ) de fins a 6 peces. Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.15.2 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, reducció iterativa interna (IIR), LMR, reverse futility i futility, extensions singulars, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 amb 8 buckets de sortida segons el nombre de peces, incrustada a l'executable; les taules PeSTO es conserven com a alternativa) i lectura de taules Syzygy (WDL i DTZ) de fins a 6 peces. Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
@@ -185,6 +185,7 @@ L'avaluació és una xarxa **768 → 256 (×2 perspectives) → 1** amb activaci
 - **Característiques:** (peça, casella) des de cada bàndol, peces pròpies al bloc 0 i del rival al 384, casella girada en vertical per a les negres. No depenen del rei, així que els acumuladors s'actualitzen sumant i restant una fila de pesos per cada peça afegida o treta.
 - **Entrenament:** 49,9 M de posicions de `datagen` (motor 0.6.1, 5.000 nodes, obertures aleatòries) més 22 M de noves (v0.10.0, 8.000 nodes, llibre propi; vegeu més avall), deduplicades i barrejades; 20 superbatches (≈40 èpoques) a una T4 de Kaggle en 4,5 minuts. Procediment complet i format del fitxer a [tools/nnue/kaggle-bullet.md](tools/nnue/kaggle-bullet.md); el subconjunt es treu amb `tools/subset`.
 - **Velocitat:** uns 2,2 M de nodes per segon a un fil, contra uns 3,9 M amb PeSTO. Un primer producte final escalar anava a 1,0 M i quedava −40 ± 44 Elo contra PeSTO; vectoritzat va a +182 ± 51.
+- **Des de la 0.15.2**, l'acumulador és mandrós (`MakeMove` només apunta els canvis i es calcula quan l'avaluació el demana, així que les jugades podades o tallades per la taula de transposició no el paguen) i el producte final fa servir AVX2 directament (16 neurones per instrucció; amb una CPU sense AVX2 es fa servir el camí amb `Vector<T>`). Amb els mateixos nodes, `bench 12` passa d'1,81 M a 2,31 M de nodes per segon (+28 %). Vegeu el [CHANGELOG](CHANGELOG.md).
 
 | Matx | Partides | Resultat | Elo |
 |---|---|---|---|
@@ -321,6 +322,7 @@ Cada part per separat perd uns 35 Elo, i juntes es sumen. Amb tot activat el mot
 - [x] Syzygy DTZ a l'arrel (v0.14.1: 0 diferències de DTZ contra python-chess en 30.500 posicions; +108,7 ± 13,0 Elo en 2.000 partides des de finals guanyats, converteix 1.000 de 1.000 contra 394 sense DTZ)
 - [x] Extensions singulars (v0.14.2: +23,5 ± 6,8 Elo contra la 0.14.1, 5.000 partides a 5+0,05, +1410 =2518 -1072, LOS 100 %; `bench 12` fa un 64 % més de nodes; contra Stockfish limitat ≈2924 al 3000 i ≈2978 al 3190, uns +8 Elo de mitjana sobre la 0.13.7, dins del marge)
 - [x] NNUE amb 8 buckets de sortida i etiquetes exactes de les taules per a 6 peces o menys (v0.15.0: +42,9 ± 7,7 Elo contra la 0.14.2, 5.000 partides a 5+0,05, +1885 =1844 −1271, LOS 100 %; ≈3011 ± 9 Elo en l'escala de la CCRL contra cinc motors externs, 5.003 partides a 10+0,1)
+- [x] NNUE més ràpida: acumulador mandrós, producte final amb AVX2 i `SkipLocalsInit` (v0.15.2: mateixos nodes i +28 % de nodes per segon; +76,1 ± 7,2 Elo contra la 0.15.1, 4.572 partides a 5+0,05, +1667 =2224 −681; a ritmes més lents el guany serà més petit)
 - [ ] History de continuació (provada i no adoptada; vegeu [History de continuació](#history-de-continuació-provada-i-no-adoptada))
 - [ ] Enviar a CCRL i CEGT, i després a les divisions baixes del TCEC
 

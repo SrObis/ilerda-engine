@@ -308,6 +308,8 @@ public sealed class Searcher
         return _stopped;
     }
 
+    // SkipLocalsInit: les llistes de jugades (stackalloc) s'escriuen abans de llegir-les; no cal posar-les a zero a cada node.
+    [System.Runtime.CompilerServices.SkipLocalsInit]
     int Negamax(int depth, int alpha, int beta, int ply, bool allowNull = true)
     {
         if (CheckStop()) return 0;
@@ -494,6 +496,7 @@ public sealed class Searcher
         return (int)(h & (CorrSize - 1));
     }
 
+    [System.Runtime.CompilerServices.SkipLocalsInit]
     int Quiesce(int alpha, int beta, int ply)
     {
         if (CheckStop()) return 0;
