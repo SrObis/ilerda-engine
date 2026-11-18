@@ -1,5 +1,25 @@
 # Canvis
 
+## 0.16.0 — Xarxa nova entrenada amb 518 M de posicions de la 0.15.3
+
+**Problema.** La xarxa de la 0.15.x s'havia entrenat amb dades generades per motors molt anteriors (0.6.1–0.10.0, 8.000 nodes i obertures limitades). Les etiquetes venien d'un motor d'uns 2400–2500 Elo, i això limitava el sostre de l'avaluació. L'anàlisi de les derrotes de la 0.15.3 mostrava que la xarxa es refiava de posicions de mig joc que no es guanyen.
+
+**Canvi.**
+
+- **Dades noves:** 526,7 M de posicions generades per la 0.15.3 (`datagen`, 5.000 nodes, obertures del llibre i aleatòries, a dos ordinadors), passades per `tools/prepara` (dedup + barrejat en trossos): 518,1 M d'úniques. A més, es conserven les 109 M velles (amb la puntuació corregida amb taules de finals), barrejades i intercalades amb les noves (`bullet-utils interleave`).
+- **Mateixa arquitectura:** 768 → 256 (×2) → 1 amb 8 buckets de sortida i SCReLU. Canvia només el volum de dades i la durada: 48 superbatches (≈7,6 passades) a una T4 de Kaggle, amb el cuaderno `tools/nnue/ilerda-train-mix.ipynb` (xarxa `ilerda-256-b8-mix-sb48`). L'entrenament s'ha automatitzat amb el CLI de Kaggle.
+- **La signatura del `bench` canvia:** `bench 12` fa 10.965.101 nodes (abans 10.877.675), perquè canvia l'avaluació. Velocitat: uns 3,1 M de nodes per segon al Ryzen 5 5600G, sense càrrega.
+
+**Resultat.** Matx contra la 0.15.3 (5+0,05, 6 simultànies, `tools/obertures.epd`, un fil): **+1965 =915 −159 en 3.039 partides, 79,7 %, uns +237 ± 11 Elo** (95 %). El matx es va aturar a les 3.039 de 5.000 previstes (el procés de cutechess va morir) i no es va reprendre: el marge ja és prou estret. És autojoc: contra motors externs el guany serà menor i encara no s'ha mesurat.
+
+Primera xarxa nova (`sb40`, 40 superbatches només amb dades noves) contra la 0.15.3: +228,6 ± 8,7 Elo (5.000 partides). La mescla amb les velles hi suma +19,5 ± 14,5 (1.000 partides, `mix-sb48` contra `sb40`).
+
+**Provat i no adoptat.**
+
+- **Correcció amb taules Syzygy de les dades noves** (`ilerda tbrelabel`: el resultat passa a ser el WDL exacte per a posicions de 6 peces o menys; canvia el resultat del 31 % d'aquestes posicions): amb 16 M de posicions de final generades amb taules (`datagen --finals`), la xarxa queda **−19,8 ± 14,3 Elo** contra la mezclada; sense els finals, **−4,5 ± 14,2** (1.000 partides cada una). Els mats de peces (KQK) milloren, però no es tradueix en Elo mesurable.
+- **Reestudiar posicions de final amb més nodes** (`ilerda relabel` a 5.000 i 20.000 nodes): les puntuacions no canvien (mediana 490 → 496); el que canvia entre xarxes és l'escala. Amb 5.000 nodes: ≈+1 Elo en 2.099 partides.
+- El codi d'aquestes proves es conserva (`relabel` amb `--peces/--sospita/--xarxa/--syzygy`, `datagen --finals --syzygy`, `tools/match-xarxa.ps1 -XarxaBase`).
+
 ## 0.15.3 — Segona ronda de velocitat
 
 **Problema.** Després de la 0.15.2 quedaven costos fixos a cada node que no depenen de la xarxa: l'actualització de l'acumulador trossejava un `Span` a cada pas del bucle, les taules de la cerca eren arrays de diverses dimensions (lents a .NET), es generaven i puntuaven totes les jugades abans de provar la de la taula de transposició (que és la que talla gairebé sempre), i la futility feia la jugada i la desfeia només per saber si era legal i si donava escac.

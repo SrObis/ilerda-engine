@@ -4,7 +4,7 @@
 
 Motor d'escacs UCI escrit en C#, fet des de zero. Ilerda és el nom romà de Lleida.
 
-**Estat:** v0.15.3 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, reducció iterativa interna (IIR), LMR, reverse futility i futility, extensions singulars, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 amb 8 buckets de sortida segons el nombre de peces, incrustada a l'executable; les taules PeSTO es conserven com a alternativa) i lectura de taules Syzygy (WDL i DTZ) de fins a 6 peces. Vegeu el [CHANGELOG](CHANGELOG.md).
+**Estat:** v0.16.0 — generador de moviments validat amb perft, cerca alfa-beta amb taula de transposició, detecció de repeticions, ordenació amb killers i history, PVS, finestres d'aspiració, poda null move, reducció iterativa interna (IIR), LMR, reverse futility i futility, extensions singulars, protocol UCI, cerca multifil (Lazy SMP, opció `Threads`) i avaluació NNUE (xarxa 768 → 256 → 1 amb 8 buckets de sortida segons el nombre de peces, incrustada a l'executable; les taules PeSTO es conserven com a alternativa) i lectura de taules Syzygy (WDL i DTZ) de fins a 6 peces. Vegeu el [CHANGELOG](CHANGELOG.md).
 
 ## Què inclou
 
@@ -39,7 +39,7 @@ dotnet run -c Release --project src/Ilerda                # mode UCI
 
 La suite de perft ha de passar sempre abans de tocar la cerca: si falla, hi ha un error al generador de moviments.
 
-`test` també comprova la signatura del `bench 12` (10.877.675 nodes amb un fil, constant `ExpectedBench` a `PerftSuite.cs`): si canvia sense haver tocat la cerca o la xarxa a propòsit, hi ha un error. Quan es canvia a propòsit, s'actualitza la constant. GitHub Actions (`.github/workflows/test.yml`) executa `test` a cada `push` i `pull request`.
+`test` també comprova la signatura del `bench 12` (10.965.101 nodes amb un fil, constant `ExpectedBench` a `PerftSuite.cs`): si canvia sense haver tocat la cerca o la xarxa a propòsit, hi ha un error. Quan es canvia a propòsit, s'actualitza la constant. GitHub Actions (`.github/workflows/test.yml`) executa `test` a cada `push` i `pull request`.
 
 Per jugar-hi, afegeix l'executable (`src/Ilerda/bin/Release/net8.0/`) a Arena, En Croissant o Cute Chess com a motor UCI.
 
@@ -183,7 +183,8 @@ Els 4 fils guanyen molt clar. `SoftTime=60` queda dins del soroll i es deixa des
 L'avaluació és una xarxa **768 → 256 (×2 perspectives) → 1** amb activació SCReLU i **8 buckets de sortida** pel nombre de peces (des de la 0.15.0), entrenada amb [bullet](https://github.com/jw1912/bullet) i incrustada a l'executable (`src/Ilerda/nets/ilerda-256.bin`). Opció UCI `EvalFile`: buida = xarxa incrustada, `none` = avaluació PeSTO, o la ruta d'un altre `quantised.bin` de bullet.
 
 - **Característiques:** (peça, casella) des de cada bàndol, peces pròpies al bloc 0 i del rival al 384, casella girada en vertical per a les negres. No depenen del rei, així que els acumuladors s'actualitzen sumant i restant una fila de pesos per cada peça afegida o treta.
-- **Entrenament:** 49,9 M de posicions de `datagen` (motor 0.6.1, 5.000 nodes, obertures aleatòries) més 22 M de noves (v0.10.0, 8.000 nodes, llibre propi; vegeu més avall), deduplicades i barrejades; 20 superbatches (≈40 èpoques) a una T4 de Kaggle en 4,5 minuts. Procediment complet i format del fitxer a [tools/nnue/kaggle-bullet.md](tools/nnue/kaggle-bullet.md); el subconjunt es treu amb `tools/subset`.
+- **Entrenament actual (0.16.0):** 518 M de posicions noves de la 0.15.3 (5.000 nodes, sense repetides) més 109 M de velles amb finals corregits amb taules, 48 superbatches a una T4 de Kaggle; +237 ± 11 Elo contra la 0.15.3 en 3.039 partides (autojoc). Vegeu el [CHANGELOG](CHANGELOG.md).
+- **Entrenament de la primera xarxa (0.15.0):** 49,9 M de posicions de `datagen` (motor 0.6.1, 5.000 nodes, obertures aleatòries) més 22 M de noves (v0.10.0, 8.000 nodes, llibre propi; vegeu més avall), deduplicades i barrejades; 20 superbatches (≈40 èpoques) a una T4 de Kaggle en 4,5 minuts. Procediment complet i format del fitxer a [tools/nnue/kaggle-bullet.md](tools/nnue/kaggle-bullet.md); el subconjunt es treu amb `tools/subset`.
 - **Velocitat:** uns 2,2 M de nodes per segon a un fil, contra uns 3,9 M amb PeSTO. Un primer producte final escalar anava a 1,0 M i quedava −40 ± 44 Elo contra PeSTO; vectoritzat va a +182 ± 51.
 - **Des de la 0.15.2**, l'acumulador és mandrós (`MakeMove` només apunta els canvis i es calcula quan l'avaluació el demana, així que les jugades podades o tallades per la taula de transposició no el paguen) i el producte final fa servir AVX2 directament (16 neurones per instrucció; amb una CPU sense AVX2 es fa servir el camí amb `Vector<T>`). Amb els mateixos nodes, `bench 12` passa d'1,81 M a 2,31 M de nodes per segon (+28 %). Vegeu el [CHANGELOG](CHANGELOG.md).
 - **A la 0.15.3**, una segona ronda: l'actualització de l'acumulador amb vectors de 256 bits llegits per referència, arrays d'una sola dimensió, la jugada de la taula de transposició provada abans de generar les altres i la futility sense fer la jugada. Uns +16 % més de nodes per segon (≈2,8 M; +48 % respecte de la 0.15.1). `bench 12` passa a 10.877.675 nodes perquè les jugades es puntuen després de cercar la de la taula.
@@ -325,6 +326,7 @@ Cada part per separat perd uns 35 Elo, i juntes es sumen. Amb tot activat el mot
 - [x] NNUE amb 8 buckets de sortida i etiquetes exactes de les taules per a 6 peces o menys (v0.15.0: +42,9 ± 7,7 Elo contra la 0.14.2, 5.000 partides a 5+0,05, +1885 =1844 −1271, LOS 100 %; ≈3011 ± 9 Elo en l'escala de la CCRL contra cinc motors externs, 5.003 partides a 10+0,1)
 - [x] NNUE més ràpida: acumulador mandrós, producte final amb AVX2 i `SkipLocalsInit` (v0.15.2: mateixos nodes i +28 % de nodes per segon; +76,1 ± 7,2 Elo contra la 0.15.1, 4.572 partides a 5+0,05, +1667 =2224 −681; a ritmes més lents el guany serà més petit)
 - [x] Segona ronda de velocitat: `ApplyDelta` amb vectors de 256 bits, arrays d'una dimensió, jugada de la taula abans de generar i futility sense fer la jugada (v0.15.3: +16 % de nodes per segon; +44,3 ± 6,6 Elo contra la 0.15.2, 5.000 partides a 5+0,05, +1485 =2664 −851)
+- [x] Xarxa nova amb 518 M de posicions de la 0.15.3 més les velles (v0.16.0: +237 ± 11 Elo contra la 0.15.3, 3.039 partides a 5+0,05, +1965 =915 −159, autojoc; la correcció amb taules de les dades noves i els finals jugats amb taules, provats i no adoptats: −19,8 ± 14,3 i −4,5 ± 14,2 Elo)
 - [ ] History de continuació (provada i no adoptada; vegeu [History de continuació](#history-de-continuació-provada-i-no-adoptada))
 - [ ] Enviar a CCRL i CEGT, i després a les divisions baixes del TCEC
 
