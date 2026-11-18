@@ -1,5 +1,68 @@
 # Canvis
 
+## 0.16.0 — Xarxa nova entrenada amb 518 M de posicions de la 0.15.3
+
+**Problema.** La xarxa de la 0.15.x s'havia entrenat amb dades generades per motors molt anteriors (0.6.1–0.10.0, 8.000 nodes i obertures limitades). Les etiquetes venien d'un motor d'uns 2400–2500 Elo, i això limitava el sostre de l'avaluació. L'anàlisi de les derrotes de la 0.15.3 mostrava que la xarxa es refiava de posicions de mig joc que no es guanyen.
+
+**Canvi.**
+
+- **Dades noves:** 526,7 M de posicions generades per la 0.15.3 (`datagen`, 5.000 nodes, obertures del llibre i aleatòries, a dos ordinadors), passades per `tools/prepara` (dedup + barrejat en trossos): 518,1 M d'úniques. A més, es conserven les 109 M velles (amb la puntuació corregida amb taules de finals), barrejades i intercalades amb les noves (`bullet-utils interleave`).
+- **Mateixa arquitectura:** 768 → 256 (×2) → 1 amb 8 buckets de sortida i SCReLU. Canvia només el volum de dades i la durada: 48 superbatches (≈7,6 passades) a una T4 de Kaggle, amb el cuaderno `tools/nnue/ilerda-train-mix.ipynb` (xarxa `ilerda-256-b8-mix-sb48`). L'entrenament s'ha automatitzat amb el CLI de Kaggle.
+- **La signatura del `bench` canvia:** `bench 12` fa 10.965.101 nodes (abans 10.877.675), perquè canvia l'avaluació. Velocitat: uns 3,1 M de nodes per segon al Ryzen 5 5600G, sense càrrega.
+
+**Resultat.** Matx contra la 0.15.3 (5+0,05, 6 simultànies, `tools/obertures.epd`, un fil): **+1965 =915 −159 en 3.039 partides, 79,7 %, uns +237 ± 11 Elo** (95 %). El matx es va aturar a les 3.039 de 5.000 previstes (el procés de cutechess va morir) i no es va reprendre: el marge ja és prou estret. És autojoc: contra motors externs el guany serà menor i encara no s'ha mesurat.
+
+Primera xarxa nova (`sb40`, 40 superbatches només amb dades noves) contra la 0.15.3: +228,6 ± 8,7 Elo (5.000 partides). La mescla amb les velles hi suma +19,5 ± 14,5 (1.000 partides, `mix-sb48` contra `sb40`).
+
+**Provat i no adoptat.**
+
+- **Correcció amb taules Syzygy de les dades noves** (`ilerda tbrelabel`: el resultat passa a ser el WDL exacte per a posicions de 6 peces o menys; canvia el resultat del 31 % d'aquestes posicions): amb 16 M de posicions de final generades amb taules (`datagen --finals`), la xarxa queda **−19,8 ± 14,3 Elo** contra la mezclada; sense els finals, **−4,5 ± 14,2** (1.000 partides cada una). Els mats de peces (KQK) milloren, però no es tradueix en Elo mesurable.
+- **Reestudiar posicions de final amb més nodes** (`ilerda relabel` a 5.000 i 20.000 nodes): les puntuacions no canvien (mediana 490 → 496); el que canvia entre xarxes és l'escala. Amb 5.000 nodes: ≈+1 Elo en 2.099 partides.
+- El codi d'aquestes proves es conserva (`relabel` amb `--peces/--sospita/--xarxa/--syzygy`, `datagen --finals --syzygy`, `tools/match-xarxa.ps1 -XarxaBase`).
+
+## 0.15.3 — Segona ronda de velocitat
+
+**Problema.** Després de la 0.15.2 quedaven costos fixos a cada node que no depenen de la xarxa: l'actualització de l'acumulador trossejava un `Span` a cada pas del bucle, les taules de la cerca eren arrays de diverses dimensions (lents a .NET), es generaven i puntuaven totes les jugades abans de provar la de la taula de transposició (que és la que talla gairebé sempre), i la futility feia la jugada i la desfeia només per saber si era legal i si donava escac.
+
+**Canvi.**
+
+- **`Nnue.ApplyDelta` amb vectors de 256 bits llegits per referència** (`Vector256.LoadUnsafe` / `StoreUnsafe`), sense crear un tros de `Span` amb la seva comprovació de límits a cada pas. El camí amb `Vector<T>` es conserva per a les CPU sense vectors de 256 bits. És el canvi que més dona: +9,6 % de nodes per segon tot sol.
+- **Arrays d'una sola dimensió:** `_history`, `_killers`, `_lmr` i `_corr` a la cerca, `ZPiece` a `Position` i `Attacks.Pawn`. `Magic` passa de classe a `struct`, i així cada consulta d'atacs de peça lliscant s'estalvia un salt de punter. +3 %.
+- **La jugada de la taula de transposició es prova abans de generar les altres**, a `Negamax` i a `Quiesce`. `MoveGen.PseudoLegal` reconstrueix la jugada completa (la taula no en desa l'indicador) i comprova que el generador l'hauria produït; a la quiescència només si és captura, captura al pas o promoció.
+- **Futility sense fer la jugada:** `Position.QuietLegal` i `Position.QuietGivesCheck` miren la legalitat i l'escac (directe i a la descoberta) d'una jugada tranquil·la sense moure-la. L'enroc continua pel camí antic.
+- Provat i retirat: desar el resultat d'`InCheck` per posició no donava cap guany mesurable.
+
+**La signatura del bench canvia:** `bench 12` fa 10.877.675 nodes (abans 10.841.872, +0,33 %). La causa és una sola: ara les jugades es puntuen després de cercar la de la taula, i per tant amb la *history* que aquell subarbre ja ha actualitzat. Una variant temporal que puntuava abans, com la 0.15.2, dona els 10.841.872 nodes de sempre: `PseudoLegal`, `QuietLegal` i `QuietGivesCheck` són, doncs, exactament equivalents al codi anterior.
+
+**Resultat.** Uns **+16 %** de nodes per segon respecte de la 0.15.2 (entre +14 % i +19 % segons la passada; ≈2,8 M contra ≈2,45 M al Ryzen 5 5600G), i uns +48 % respecte de la 0.15.1.
+
+Matx contra la 0.15.2 (5.000 partides a 5+0,05, 6 simultànies, `tools/obertures.epd`, un fil): +1485 =2664 −851, 56,3 %, **+44,3 ± 6,6 Elo**. Una sola derrota per temps (de la 0.15.2, partida 341). La profunditat mitjana passa d'11,61 a 11,92. Com a la 0.15.2, és més del que s'espera de la velocitat sola, i a ritmes més lents el guany serà més petit; no s'ha mesurat contra motors externs.
+
+**Anàlisi de les partides** (des del punt de vista de la 0.15.3):
+
+- **Les derrotes es decideixen aviat.** El punt a partir del qual l'avaluació ja no torna a passar de −0,5 arriba amb 20 peces o més en el 80 % de les 851 derrotes (46 % amb 26 o més) i abans de la jugada 30 en el 78 %. Només el 4 % es decideixen amb 12 peces o menys.
+- **En el 20 % de les derrotes s'havia arribat a veure +1,0 o més**, i en el 6 %, +2,0 o més.
+- **L'avaluació oscil·la molt a les taules.** De 2.664 taules, només 73 es queden sempre entre −0,5 i +0,5; en el 32 % la 0.15.3 va arribar a veure +2,0 o més (19 %, +3,0 o més) i en el 26 %, −2,0 o menys. En 911 taules algun dels dos bàndols va veure 3,0 o més, i en 475 d'elles el pic és amb 13 peces o més. La xarxa continua massa segura de posicions que no es guanyen.
+- Per parelles d'obertura (les dues partides amb colors canviats): 122 guanyades 2–0, 469 per 1,5, 619 empatades, 245 per 0,5 i 43 perdudes 0–2.
+
+Com que els dos bàndols tenen la mateixa xarxa i la mateixa cerca, aquesta anàlisi no veu els defectes que comparteixen.
+
+## 0.15.2 — NNUE més ràpida: acumulador mandrós i producte final amb AVX2
+
+**Problema.** La cerca feia feina de la xarxa que després no es feia servir: `MakeMove` actualitzava l'acumulador (2 × 256 valors) a cada jugada, també a les que es podaven tot seguit per futility o que es tallaven per la taula de transposició sense arribar a avaluar. A més, el producte final de la xarxa eixamplava els valors a 32 bits abans de multiplicar, i cada node posava a zero uns 2,8 KB de llistes de jugades que s'escriuen abans de llegir-les.
+
+**Canvi.** La cerca i l'avaluació donen exactament els mateixos resultats; només canvia el temps que triguen.
+
+- **Acumulador mandrós** (`Position.cs`). `MakeMove` només apunta quines característiques (peça, casella) s'afegeixen i es treuen. L'acumulador es calcula quan l'avaluació el demana (`Position.Acc`): a partir de l'últim calculat s'apliquen els canvis pendents, una passada per jugada. Les jugades podades, les il·legals i els nodes que es resolen amb la taula de transposició ja no paguen l'actualització.
+- **Producte final amb AVX2** (`Nnue.Evaluate`). 16 neurones per instrucció: `a · w` en 16 bits (`MultiplyLow`) i després `(a · w) · a` sumant parelles veïnes en 32 bits (`MultiplyAddAdjacent`). Només val si `a · w` cap en 16 bits, és a dir, si cap pes de sortida passa de 128 en valor absolut (l'activació és ≤ 255); es comprova en carregar la xarxa i, si no es compleix o la CPU no té AVX2, es fa servir el camí anterior amb `Vector<T>`, que es conserva.
+- **`[SkipLocalsInit]`** a `Negamax` i `Quiesce`: les llistes de jugades i de puntuacions (`stackalloc`) ja no es posen a zero a cada node. Només en aquests dos mètodes, no a tot el projecte, per no tocar el lector de taules Syzygy.
+
+**Resultat.** `bench 12` fa els mateixos 10.841.872 nodes i passa d'uns 1,81 M a uns 2,31 M de nodes per segon (**+28 %**; tres passades alternades amb la 0.15.1 al mateix ordinador, Ryzen 5 5600G).
+
+Matx contra la 0.15.1 (5+0,05, 6 simultànies, `tools/obertures.epd`, un fil): +1667 =2224 −681 en 4.572 partides, 60,8 %, **+76,1 ± 7,2 Elo**. El matx era de 5.000 partides i es va tallar a la 4.572 perquè es va apagar l'ordinador; cap derrota per temps ni cap jugada il·legal. A les 369 partides anava a +75 i a les 1.063 a +80: no s'ha mogut gaire en tot el matx.
+
+És més del que s'esperava d'un 28 % de velocitat (uns +20 a +30 Elo). A 5+0,05 cada jugada dura unes dècimes de segon i la velocitat hi pesa molt, i l'autojoc exagera les millores; a ritmes més lents el guany serà més petit. No s'ha mesurat contra motors externs.
+
 ## 0.15.1 — Executables per a tornejos
 
 **Problema.** La 0.15.0 no estava preparada per enviar-la a les llistes de proves (CCRL, CEGT): no hi havia executables publicats i el límit de `Hash` era baix per a les màquines de torneig.

@@ -1,4 +1,8 @@
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 
 namespace Ilerda;
 
@@ -24,6 +28,7 @@ public static class Nnue
     static short[] _l0b = Array.Empty<short>(); // [Hidden]
     static short[] _l1w = Array.Empty<short>(); // [Buckets][2 * Hidden]: bàndol que juga, després l'altre
     static short[] _l1b = Array.Empty<short>(); // [Buckets]
+    static bool _fastOut; // tots els pesos de sortida caben al camí d'AVX2 (|w| ≤ 128)
 
     /// <summary>Carrega la xarxa. Retorna false si el fitxer no existeix o no té la mida d'una xarxa 768 -> N -> 1.</summary>
     public static bool Load(string path, out string error)
@@ -74,6 +79,10 @@ public static class Nnue
             _l0b = s[(768 * h)..(769 * h)];
             _l1w = s[(769 * h)..((769 + 2 * nb) * h)];
             _l1b = s[((769 + 2 * nb) * h)..((769 + 2 * nb) * h + nb)];
+            // El camí ràpid d'AVX2 multiplica activació (≤ 255) per pes en i16: només val si cap pes passa de 128.
+            int maxW = 0;
+            foreach (short w in _l1w) maxW = Math.Max(maxW, Math.Abs((int)w));
+            _fastOut = maxW <= 128;
             Buckets = nb;
             Hidden = h;
             return true;
@@ -116,6 +125,38 @@ public static class Nnue
     public static void ApplyDelta(ReadOnlySpan<short> src, Span<short> dst, ReadOnlySpan<int> adds, ReadOnlySpan<int> subs)
     {
         int h = Hidden, step = Vector<short>.Count;
+        if (Vector256.IsHardwareAccelerated && h % 16 == 0)
+        {
+            // Camí ràpid: vectors de 256 bits llegits i escrits per referència, sense crear un tros de Span
+            // (amb la seva comprovació de límits) a cada pas. Fa les mateixes sumes que el camí genèric de sota.
+            ref short w = ref MemoryMarshal.GetArrayDataReference(_l0w);
+            for (int c = 0; c < 2; c++)
+            {
+                ref short s = ref MemoryMarshal.GetReference(src.Slice(c * h, h));
+                ref short d = ref MemoryMarshal.GetReference(dst.Slice(c * h, h));
+                ref short a0 = ref Unsafe.Add(ref w, Feature(c, adds[0], adds[1]) * h);
+                ref short s0 = ref Unsafe.Add(ref w, Feature(c, subs[0], subs[1]) * h);
+                if (adds.Length == 2 && subs.Length == 2)
+                {
+                    for (nuint i = 0; i < (nuint)h; i += 16)
+                        (Vector256.LoadUnsafe(ref s, i) + Vector256.LoadUnsafe(ref a0, i) - Vector256.LoadUnsafe(ref s0, i)).StoreUnsafe(ref d, i);
+                }
+                else if (adds.Length == 2)
+                {
+                    ref short s1 = ref Unsafe.Add(ref w, Feature(c, subs[2], subs[3]) * h);
+                    for (nuint i = 0; i < (nuint)h; i += 16)
+                        (Vector256.LoadUnsafe(ref s, i) + Vector256.LoadUnsafe(ref a0, i) - Vector256.LoadUnsafe(ref s0, i) - Vector256.LoadUnsafe(ref s1, i)).StoreUnsafe(ref d, i);
+                }
+                else
+                {
+                    ref short a1 = ref Unsafe.Add(ref w, Feature(c, adds[2], adds[3]) * h);
+                    ref short s1 = ref Unsafe.Add(ref w, Feature(c, subs[2], subs[3]) * h);
+                    for (nuint i = 0; i < (nuint)h; i += 16)
+                        (Vector256.LoadUnsafe(ref s, i) + Vector256.LoadUnsafe(ref a0, i) + Vector256.LoadUnsafe(ref a1, i) - Vector256.LoadUnsafe(ref s0, i) - Vector256.LoadUnsafe(ref s1, i)).StoreUnsafe(ref d, i);
+                }
+            }
+            return;
+        }
         for (int c = 0; c < 2; c++)
         {
             var s = src.Slice(c * h, h);
@@ -165,7 +206,28 @@ public static class Nnue
         var them = acc.Slice((side ^ 1) * h, h);
         long sum = 0;
         int i = 0;
-        if (Vector.IsHardwareAccelerated && h % Vector<short>.Count == 0)
+        if (_fastOut && Avx2.IsSupported && h % 16 == 0)
+        {
+            // SCReLU amb AVX2, 16 neurones per instrucció: a * w cap en i16 (a ≤ 255, |w| ≤ 128, comprovat en carregar)
+            // i madd fa (a * w) * a i suma les parelles veïnes en i32. Dona el mateix resultat que el camí genèric.
+            ref short usR = ref MemoryMarshal.GetReference(us);
+            ref short themR = ref MemoryMarshal.GetReference(them);
+            ref short wR = ref _l1w[wo];
+            var zero = Vector256<short>.Zero;
+            var qa = Vector256.Create((short)Qa);
+            var vsum = Vector256<int>.Zero;
+            for (; i < h; i += 16)
+            {
+                var a = Avx2.Min(Avx2.Max(Vector256.LoadUnsafe(ref usR, (nuint)i), zero), qa);
+                var b = Avx2.Min(Avx2.Max(Vector256.LoadUnsafe(ref themR, (nuint)i), zero), qa);
+                var wa = Vector256.LoadUnsafe(ref wR, (nuint)i);
+                var wb = Vector256.LoadUnsafe(ref wR, (nuint)(h + i));
+                vsum = Avx2.Add(vsum, Avx2.MultiplyAddAdjacent(Avx2.MultiplyLow(a, wa), a));
+                vsum = Avx2.Add(vsum, Avx2.MultiplyAddAdjacent(Avx2.MultiplyLow(b, wb), b));
+            }
+            sum = Vector256.Sum(vsum);
+        }
+        else if (Vector.IsHardwareAccelerated && h % Vector<short>.Count == 0)
         {
             // SCReLU amb vectors: clamp a [0, QA], a² (≤ 65025) en i32 i producte amb el pes (i16 -> i32).
             var zero = Vector<short>.Zero;
