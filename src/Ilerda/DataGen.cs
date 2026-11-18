@@ -15,8 +15,17 @@ public static class DataGen
     const int WinScore = 2000, WinPlies = 6;
     const int DrawScore = 8, DrawPlies = 12, DrawAfterPly = 80;
 
+    /// <summary>
+    /// Mode "finals": el llibre són posicions de final (no obertures). No es fan jugades aleatòries ni es descarta la posició
+    /// inicial per la puntuació, i cal haver carregat les taules Syzygy: la cerca les sondeja i la partida s'acaba amb el
+    /// resultat exacte de la taula quan queden prou poques peces.
+    /// </summary>
+    public static bool Endgames;
+    const int MaxRecordedScore = 3000; // les victòries de taula surten com a 20000; a les dades es limiten
+
     public static void Run(long games, long nodes, string path, int threads, int seed, string? bookPath = null)
     {
+        if (Endgames && (bookPath == null || !Syzygy.Enabled)) { Console.WriteLine("datagen: el mode --finals necessita un llibre de posicions i --syzygy"); return; }
         _book = bookPath == null ? null : LoadBook(bookPath);
         if (bookPath != null && _book!.Length == 0) { Console.WriteLine($"datagen: llibre buit o il·legible: {bookPath}"); return; }
         threads = Math.Max(1, threads);
@@ -26,7 +35,7 @@ public static class DataGen
         using var writer = new StreamWriter(path, append: true, new UTF8Encoding(false));
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; Volatile.Write(ref _quit, 1); };
 
-        Console.WriteLine($"datagen: {(games == 0 ? "sense límit" : games)} partides, {nodes} nodes, {threads} fils, fitxer {path}, obertures {(_book == null ? "aleatòries" : _book.Length + " del llibre")}");
+        Console.WriteLine($"datagen: {(games == 0 ? "sense límit" : games)} partides, {nodes} nodes, {threads} fils, fitxer {path}, {(Endgames ? "finals" : "obertures")} {(_book == null ? "aleatòries" : _book.Length + " del llibre")}{(Syzygy.Enabled ? $", Syzygy fins a {Syzygy.MaxCardinality} peces" : "")}");
 
         var workers = new Thread[threads];
         for (int t = 0; t < threads; t++)
@@ -92,7 +101,7 @@ public static class DataGen
         // Jugades aleatòries (2-4 després d'una obertura del llibre, perquè no surtin partides idèntiques).
         Span<int> moves = stackalloc int[320];
         Span<int> ok = stackalloc int[320];
-        int randomPlies = _book == null ? RandomPlies + rng.Next(2) : 2 + rng.Next(3);
+        int randomPlies = Endgames ? 0 : _book == null ? RandomPlies + rng.Next(2) : 2 + rng.Next(3);
         for (int i = 0; i < randomPlies; i++)
         {
             int n = MoveGen.Generate(pos, moves);
@@ -112,11 +121,19 @@ public static class DataGen
                 return pos.InCheck() ? (pos.Side == 0 ? 0.0 : 1.0) : 0.5;
             if (pos.Halfmove >= 100 || pos.IsRepetition() || InsufficientMaterial(pos)) return 0.5;
 
+            // Amb taules: quan la posició ja és a la taula, el resultat és exacte i la partida s'acaba aquí.
+            if (Syzygy.Enabled && pos.Castling == 0 && BitOperations.PopCount(pos.Occ) <= Syzygy.MaxCardinality
+                && Syzygy.ProbeWdl(pos, out Wdl tb))
+            {
+                int whiteWdl = pos.Side == 0 ? (int)tb : -(int)tb;
+                return whiteWdl == 2 ? 1.0 : whiteWdl == -2 ? 0.0 : 0.5;
+            }
+
             int best = s.Think(pos, 64, 0, null);
             int score = s.LastScore; // des del bàndol que juga
             int white = pos.Side == 0 ? score : -score;
 
-            if (ply == 0 && Math.Abs(white) > MaxOpeningScore) return -1;
+            if (ply == 0 && !Endgames && Math.Abs(white) > MaxOpeningScore) return -1;
 
             if (Math.Abs(score) > 30000 - 100)
                 return white > 0 ? 1.0 : 0.0; // mat trobat
@@ -135,7 +152,7 @@ public static class DataGen
 
             bool quiet = pos.Board[MoveGen.To(best)] == -1 && MoveGen.Promo(best) == 0 && MoveGen.Flag(best) != MoveGen.FlagEp;
             if (quiet && !pos.InCheck() && ply >= 0)
-                buffer.Add($"{Fen(pos)} | {white}");
+                buffer.Add($"{Fen(pos)} | {Math.Clamp(white, -MaxRecordedScore, MaxRecordedScore)}");
 
             pos.MakeMove(best);
             ply++;
